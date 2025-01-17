@@ -1,0 +1,6 @@
+opencv-python
+timm
+ml_collections
+scikit-learn
+einops
+tensorboard
