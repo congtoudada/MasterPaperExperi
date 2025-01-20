@@ -13,8 +13,12 @@ def train_one_epoch(model_online: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, momentum_schedule,
                     log_writer=None, args=None):
+    model_online.is_inference = False
+    model_target.is_inference = False
     model_online.train()
+    # model_target.train()
     model_online = model_online.float()
+    model_target = model_target.float()
     metric_logger = misc.MetricLogger(delimiter="")
     header = 'Epoch: [{}]'.format(epoch)
 
@@ -72,9 +76,9 @@ def train_one_epoch(model_online: torch.nn.Module,
         if log_writer is not None:
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
             log_writer.add_scalar('train_loss', loss_value_reduce, epoch_1000x)
-            log_writer.update(train_loss=online_loss_value_reduce, head="online_loss", step=epoch_1000x)
-            log_writer.update(train_loss=target_loss_value_reduce, head="target_loss", step=epoch_1000x)
-            log_writer.update(train_loss=rec_cons_loss_value_reduce, head="rec_cons_loss", step=epoch_1000x)
+            log_writer.add_scalar("online_loss", online_loss_value_reduce, epoch_1000x)
+            log_writer.add_scalar("target_loss", target_loss_value_reduce, epoch_1000x)
+            log_writer.add_scalar("rec_cons_loss", rec_cons_loss_value_reduce, epoch_1000x)
             log_writer.add_scalar('lr', lr, epoch_1000x)
 
     # gather the stats from all processes
@@ -87,6 +91,7 @@ def test_one_epoch(model: torch.nn.Module,
                    data_loader: Iterable,
                    device: torch.device, epoch: int,
                    log_writer=None, args=None):
+    model.is_inference = True
     model.eval()
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Testing epoch: [{}]'.format(epoch)
@@ -119,7 +124,7 @@ def test_one_epoch(model: torch.nn.Module,
     for vid in np.unique(videos):
         pred = predictions[np.array(videos) == vid]
         pred = np.nan_to_num(pred, nan=0.)
-        if args.dataset=='avenue':
+        if args.dataset == 'avenue':
             pred = filt(pred, range=38, mu=11)
         else:
             raise ValueError('Unknown parameters for predictions postprocessing')

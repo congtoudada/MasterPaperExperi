@@ -2,13 +2,15 @@ import argparse
 import glob
 import os
 import platform
-
 import cv2
 import numpy as np
 import torch.utils.data
-
+from PIL import Image
 from configs.configs import get_configs_avenue, get_configs_shanghai
-from data.mae_dataset import VideoTransform
+import os
+import glob
+
+from data.vid_transform import VideoTestTransform
 
 IMG_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tif"]
 
@@ -24,7 +26,7 @@ class VadTestDataset(torch.utils.data.Dataset):
             gt_path = args.shanghai_gt_path
         else:
             raise Exception("Unknown dataset!")
-        self.transform = VideoTransform(size=args.input_size)
+        self.transform = VideoTestTransform(size=args.input_size)
         self.data, self.labels, self.gradients = self._read_data(data_path, gt_path)
 
     def _read_data(self, data_path, gt_path):
@@ -59,19 +61,12 @@ class VadTestDataset(torch.utils.data.Dataset):
         return data, labels, gradients
 
     def __getitem__(self, index):
-        img = cv2.imread(self.data[index])
-        gradient = cv2.imread(self.gradients[index])
-        if img.shape[:2] != self.args.input_size[::-1]:
-            img = cv2.resize(img, self.args.input_size[::-1])
-            gradient = cv2.resize(gradient, self.args.input_size[::-1])
+        frame_path = self.data[index]
+        frame = Image.open(frame_path)
+        gradient = Image.open(self.gradients[index])
 
-        img = img.astype(np.float32)
-        gradient = gradient.astype(np.float32)
-
-        img = (img - 127.5) / 127.5
-        img = np.swapaxes(img, 0, -1).swapaxes(1, -1)
-        gradient = np.swapaxes(gradient, 0, 1).swapaxes(0, -1)
-        return img, gradient, self.labels[index], self.data[index].split('/')[-2], self.data[index]
+        frame, gradient = self.transform(frame, gradient)
+        return frame, gradient, self.labels[index], self.data[index].split('/')[-2], self.data[index]
 
     def __len__(self):
         return len(self.data)

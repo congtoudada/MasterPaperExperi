@@ -133,14 +133,14 @@ class MetricLogger(object):
         space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
         log_msg = [
             header,
-            '[{0' + space_fmt + '}/{1}]',
-            'eta: {eta}',
-            '{meters}',
-            'time: {time}',
-            'data: {data}'
+            '[{0' + space_fmt + '}/{1}] ',
+            'eta: {eta} ',
+            '{meters} ',
+            'time: {time} ',
+            'data: {data} '
         ]
         if torch.cuda.is_available():
-            log_msg.append('max mem: {memory:.0f}')
+            log_msg.append('max mem: {memory:.0f} MB')
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
         for obj in iterable:
@@ -295,44 +295,45 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     return total_norm
 
 
-def save_model(args, epoch, model, optimizer, loss_scaler, latest=False, best=False, student=False):
+def save_model(args, epoch, model_online, model_target, optimizer, loss_scaler, momentum_schedule,
+               latest=False, best=False):
     if latest:
         output_dir = Path(args.output_dir)
         if loss_scaler is not None:
             checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "latest")]
             for checkpoint_path in checkpoint_paths:
                 to_save = {
-                    'model': model.state_dict(),
+                    'model_online': model_online.state_dict(),
+                    'model_target': model_target.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'epoch': epoch,
                     'scaler': loss_scaler.state_dict(),
+                    'momentum': momentum_schedule.tolist(),
                     'args': args,
                 }
-
                 save_on_master(to_save, checkpoint_path)
     if best:
         output_dir = Path(args.output_dir)
         if loss_scaler is not None:
-            if not student:
-                checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "best")]
-            else:
-                checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "best-student")]
+            checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "best")]
             for checkpoint_path in checkpoint_paths:
                 to_save = {
-                    'model': model.state_dict(),
+                    'model_online': model_online.state_dict(),
+                    'model_target': model_target.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'epoch': epoch,
                     'scaler': loss_scaler.state_dict(),
+                    'momentum': momentum_schedule.tolist(),
                     'args': args,
                 }
-
                 save_on_master(to_save, checkpoint_path)
 
 
-def load_model(args, model, optimizer=None, loss_scaler=None):
+def load_model(args, model_online, model_target, optimizer=None, loss_scaler=None, momentum_schedule=None):
     if args.resume:
         checkpoint = torch.load(os.path.join(args.output_dir, "checkpoint-latest.pth"), map_location='cpu')
-        model.load_state_dict(checkpoint['model'])
+        model_online.load_state_dict(checkpoint['model_online'])
+        model_target.load_state_dict(checkpoint['model_target'])
         print("Resume checkpoint %s" % args.resume)
         if optimizer:
             if 'optimizer' in checkpoint and 'epoch' in checkpoint and not (hasattr(args, 'eval') and args.eval):
@@ -340,6 +341,8 @@ def load_model(args, model, optimizer=None, loss_scaler=None):
                 args.start_epoch = checkpoint['epoch'] + 1
                 if 'scaler' in checkpoint:
                     loss_scaler.load_state_dict(checkpoint['scaler'])
+                if 'momentum' in checkpoint:
+                    momentum_schedule = np.array(checkpoint['momentum'])
                 print("With optim & sched!")
 
 
@@ -377,11 +380,11 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epoch
 def cons_loss(online_pred, online_mask, target_pred):
     # On the same masked inputs
     # Including the masked / unmasked patches
-    n, c, _, _ = online_pred.shape
-    online_pred = online_pred.reshape(n, c, -1)
-    online_pred = torch.einsum('ncl->nlc', online_pred)
-    target_pred = target_pred.reshape(n, c, -1)
-    target_pred = torch.einsum('ncl->nlc', target_pred)
+    # n, c, _, = online_pred.shape
+    # online_pred = online_pred.reshape(n, c, -1)
+    # online_pred = torch.einsum('ncl->nlc', online_pred)
+    # target_pred = target_pred.reshape(n, c, -1)
+    # target_pred = torch.einsum('ncl->nlc', target_pred)
     rec_cons_loss = (online_pred - target_pred.detach()) ** 2
     rec_cons_loss = rec_cons_loss.mean(dim=-1)  # [N, L], mean loss per patch
     rec_cons_loss = (rec_cons_loss * online_mask).sum() / online_mask.sum()  # mean loss on removed patches

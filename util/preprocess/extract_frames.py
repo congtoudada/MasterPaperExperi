@@ -31,7 +31,7 @@ def extract(video_path, img_path, step):
             # name = f"{path_frames}{mapp}/{count}.jpg"
             # name = "{}{}/{:03d}.jpg".format(path_frames, mapp, count) # "{:03d}.jpg".format(frames)
             # name = "{}{}/{}_{}.jpg".format(path_frames, mapp, mapp, count)  # "{:03d}.jpg".format(frames)
-            name = "{}/{}/{}.jpg".format(path_frames, mapp, count)  # "{:03d}.jpg".format(frames)
+            name = "{}/{}/{}.png".format(path_frames, mapp, count)  # "{:03d}.jpg".format(frames)
             if not os.path.isdir(f"{path_frames}/{mapp}"):
                 print(f"{path_frames}/{mapp}")
                 os.makedirs(f"{path_frames}/{mapp}", exist_ok=True)

@@ -11,7 +11,7 @@ class MaskedAutoencoderCvT(nn.Module):
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False,
                  use_only_masked_tokens_ab=False, abnormal_score_func='L1',
-                 grad_weighted_loss=True, is_target=False):
+                 grad_weighted_loss=True, is_target=False, is_inference=False):
         super().__init__()
         # --------------------------------------------------------------------------
         # Abnormal specifics
@@ -24,6 +24,7 @@ class MaskedAutoencoderCvT(nn.Module):
         self.grad_weighted_loss = grad_weighted_loss
         self.norm_pix_loss = norm_pix_loss
         self.is_target = is_target
+        self.is_inference = is_inference
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
@@ -203,7 +204,7 @@ class MaskedAutoencoderCvT(nn.Module):
         # decoder
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
         loss = self.forward_loss(img, grad_mask, pred, mask)
-        if self.training:
+        if not self.is_inference:
             return loss, pred, mask, ids_shuffle, ids_restore
         else:
             return loss, pred, mask, ids_shuffle, ids_restore, self.abnormal_score(img, pred, mask)

@@ -3,7 +3,7 @@ import ml_collections
 
 def get_configs_avenue():
     config = ml_collections.ConfigDict()
-    config.batch_size = 2
+    config.batch_size = 64
     config.epochs = 200
     config.eval_epoch = 100
     config.mask_ratio = 0.75
@@ -13,15 +13,18 @@ def get_configs_avenue():
     config.abnormal_score_func = 'L2'
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
-    config.input_size = (320, 640)
+    config.input_size = (256, 448)  # (360,640) --> (320, 640) --> (256, 448) 16patch有448个块
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = 'inference'  # train & inference
-    config.resume = False
+    config.run_type = 'train'  # train & inference
+    config.resume = True
     # Optimizer parameters
     config.weight_decay = 0.05
     config.lr = 1e-4
-    config.momentum_target = 0.999
+    # batch_size越大，momentum应该适当调小，以避免过度平滑更新。
+    # batch_size较小，momentum可以相对较大，以帮助抵抗噪声并加速收敛。
+    # for example use 0.9995 with batch size of 256.
+    config.momentum_target = 0.996
     config.gamma = 1.0  # 两帧间重建损失权重
 
     # Dataset parameters
@@ -35,41 +38,40 @@ def get_configs_avenue():
     config.start_epoch = 0
     config.print_freq = 10
     config.num_workers = 0
-    config.pin_mem = False
+    config.pin_mem = True
 
     return config
 
 
 def get_configs_shanghai():
     config = ml_collections.ConfigDict()
-    config.batch_size = 32
-    config.epochs = 140
-    config.eval_epoch = 100
-    config.warm_epoch = 100
-    config.mask_ratio = 0.5
-    config.start_TS_epoch = 100
-    config.masking_method = "random_masking"
+    config.batch_size = 64
+    config.epochs = 200
+    config.eval_epoch = 175
+    config.mask_ratio = 0.75
+    # config.start_TS_epoch = 100
+    # config.masking_method = "random_masking"
     config.output_dir = "experiments/shanghai"  # the checkpoints will be loaded from here
-    config.abnormal_score_func = 'L1'
+    config.abnormal_score_func = 'L2'
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
     config.input_size = (160, 320)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = "inference"
-    config.resume=False
+    config.run_type = "train"
+    config.resume = True
 
     # Optimizer parameters
     config.weight_decay = 0.05
     config.lr = 1e-4
-    config.momentum_target = 0.999
+    config.momentum_target = 0.996
 
     # Dataset parameters
     config.dataset = "shanghai"
     config.shanghai_path = "H:/AI/dataset/VAD/Featurize/ShanghaiTech"
     config.shanghai_gt_path = "H:/AI/dataset/VAD/Featurize/ShanghaiTech/Shanghai_gt"
-    config.percent_abnormal = 0.25
-    config.input_3d = True
+    # config.percent_abnormal = 0.25
+    # config.input_3d = True
     config.device = "cuda"
 
     config.start_epoch = 0
