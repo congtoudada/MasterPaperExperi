@@ -1,8 +1,10 @@
 from collections.abc import Iterable
+from functools import partial
 from itertools import repeat
 import logging
 import os
 from collections import OrderedDict
+
 import numpy as np
 import scipy
 import torch
@@ -10,7 +12,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
-from timm.layers import DropPath, trunc_normal_
+
+from timm.models.layers import DropPath, trunc_normal_
 
 
 # From PyTorch internals
@@ -43,28 +46,25 @@ class QuickGELU(nn.Module):
     def forward(self, x: torch.Tensor):
         return x * torch.sigmoid(1.702 * x)
 
-
 class PointwiseConvMlp(nn.Module):
     def __init__(self, in_features, hidden_features, with_cls_token=True):
         super().__init__()
-        self.with_cls_token = with_cls_token
+        self.with_cls_token=with_cls_token
         self.net = nn.Sequential(
             nn.Conv2d(in_features, hidden_features, 1),
             nn.GELU(),
             nn.Dropout(0.1),
             nn.Conv2d(hidden_features, in_features, 1),
         )
-
     def forward(self, x, h, w):
         if self.with_cls_token:
-            cls_token, x = torch.split(x, [1, h * w], 1)
+            cls_token, x = torch.split(x, [1, h*w], 1)
         x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
         x = self.net(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
         if self.with_cls_token:
             x = torch.cat((cls_token, x), dim=1)
         return x
-
 
 class Mlp(nn.Module):
     def __init__(self,
@@ -133,7 +133,7 @@ class Attention(nn.Module):
         self.proj_k = nn.Linear(dim_in, dim_out, bias=qkv_bias)
         self.proj_v = nn.Linear(dim_in, dim_out, bias=qkv_bias)
 
-        self.attn_drop = nn.Dropout(attn_drop)
+        self.attn1_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim_out, dim_out)
         self.proj_drop = nn.Dropout(proj_drop)
 
@@ -175,11 +175,13 @@ class Attention(nn.Module):
 
         return proj
 
-    def forward_conv(self, x, h, w):
+    def forward_conv(self, x, kv, h, w):
         if self.with_cls_token:
-            cls_token, x = torch.split(x, [1, h * w], 1)
+            cls_token, x = torch.split(x, [1, h*w], 1)
+            cls_token_kv, kv = torch.split(kv, [1, h*w], 1)
 
         x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
+        kv = rearrange(kv, 'b (h w) c -> b c h w', h=h, w=w)
 
         if self.conv_proj_q is not None:
             q = self.conv_proj_q(x)
@@ -187,29 +189,29 @@ class Attention(nn.Module):
             q = rearrange(x, 'b c h w -> b (h w) c')
 
         if self.conv_proj_k is not None:
-            k = self.conv_proj_k(x)
+            k = self.conv_proj_k(kv)
         else:
-            k = rearrange(x, 'b c h w -> b (h w) c')
+            k = rearrange(kv, 'b c h w -> b (h w) c')
 
         if self.conv_proj_v is not None:
-            v = self.conv_proj_v(x)
+            v = self.conv_proj_v(kv)
         else:
-            v = rearrange(x, 'b c h w -> b (h w) c')
+            v = rearrange(kv, 'b c h w -> b (h w) c')
 
         if self.with_cls_token:
             q = torch.cat((cls_token, q), dim=1)
-            k = torch.cat((cls_token, k), dim=1)
-            v = torch.cat((cls_token, v), dim=1)
+            k = torch.cat((cls_token_kv, k), dim=1)
+            v = torch.cat((cls_token_kv, v), dim=1)
 
         return q, k, v
 
-    def forward(self, x, h, w):
+    def forward(self, x, kv, h, w):
         if (
-                self.conv_proj_q is not None
-                or self.conv_proj_k is not None
-                or self.conv_proj_v is not None
+            self.conv_proj_q is not None
+            or self.conv_proj_k is not None
+            or self.conv_proj_v is not None
         ):
-            q, k, v = self.forward_conv(x, h, w)
+            q, k, v = self.forward_conv(x, kv, h, w)
 
         q = rearrange(self.proj_q(q), 'b t (h d) -> b h t d', h=self.num_heads)
         k = rearrange(self.proj_k(k), 'b t (h d) -> b h t d', h=self.num_heads)
@@ -217,7 +219,7 @@ class Attention(nn.Module):
 
         attn_score = torch.einsum('bhlk,bhtk->bhlt', [q, k]) * self.scale
         attn = F.softmax(attn_score, dim=-1)
-        attn = self.attn_drop(attn)
+        attn = self.attn1_drop(attn)
 
         x = torch.einsum('bhlt,bhtv->bhlv', [attn, v])
         x = rearrange(x, 'b h t d -> b t (h d)')
@@ -235,7 +237,7 @@ class Attention(nn.Module):
         flops = 0
 
         _, T, C = input.shape
-        H = W = int(np.sqrt(T - 1)) if module.with_cls_token else int(np.sqrt(T))
+        H = W = int(np.sqrt(T-1)) if module.with_cls_token else int(np.sqrt(T))
 
         H_Q = H / module.stride_q
         W_Q = H / module.stride_q
@@ -255,8 +257,8 @@ class Attention(nn.Module):
         flops += T_Q * module.dim * T_KV
 
         if (
-                hasattr(module, 'conv_proj_q')
-                and hasattr(module.conv_proj_q, 'conv')
+            hasattr(module, 'conv_proj_q')
+            and hasattr(module.conv_proj_q, 'conv')
         ):
             params = sum(
                 [
@@ -267,8 +269,8 @@ class Attention(nn.Module):
             flops += params * H_Q * W_Q
 
         if (
-                hasattr(module, 'conv_proj_k')
-                and hasattr(module.conv_proj_k, 'conv')
+            hasattr(module, 'conv_proj_k')
+            and hasattr(module.conv_proj_k, 'conv')
         ):
             params = sum(
                 [
@@ -279,8 +281,8 @@ class Attention(nn.Module):
             flops += params * H_KV * W_KV
 
         if (
-                hasattr(module, 'conv_proj_v')
-                and hasattr(module.conv_proj_v, 'conv')
+            hasattr(module, 'conv_proj_v')
+            and hasattr(module.conv_proj_v, 'conv')
         ):
             params = sum(
                 [
@@ -315,9 +317,11 @@ class Block(nn.Module):
                  drop_path=0.,
                  act_layer=nn.GELU,
                  norm_layer=nn.LayerNorm,
+                 cross_attn=False,
                  **kwargs):
         super().__init__()
 
+        self.cross_attn = cross_attn
         self.norm1 = norm_layer(dim_in)
         self.attn = Attention(
             dim_in, dim_out, num_heads, qkv_bias, attn_drop, drop,
@@ -326,24 +330,46 @@ class Block(nn.Module):
 
         self.drop_path = DropPath(drop_path) \
             if drop_path > 0. else nn.Identity()
-        self.norm2 = norm_layer(dim_out)
-
         dim_mlp_hidden = int(dim_out * mlp_ratio)
+        self.mlp = PointwiseConvMlp(in_features=dim_out, hidden_features=dim_mlp_hidden)
+        self.norm2 = norm_layer(dim_out)
         # self.mlp = Mlp(
         #     in_features=dim_out,
         #     hidden_features=dim_mlp_hidden,
         #     act_layer=act_layer,
         #     drop=drop
         # )
-        self.mlp = PointwiseConvMlp(in_features=dim_out, hidden_features=dim_mlp_hidden)
+        if cross_attn:
+            self.attn2 = Attention(
+                dim_in, dim_out, num_heads, qkv_bias, attn_drop, drop,
+                **kwargs
+            )
+            self.norm3 = norm_layer(dim_in)
+            self.norm4 = norm_layer(dim_out)
+            self.mlp2 = PointwiseConvMlp(in_features=dim_in, hidden_features=dim_mlp_hidden)
 
-    def forward(self, x, h, w):
+    def forward(self, x, kv, h, w):
         res = x
-
         x = self.norm1(x)
-        attn = self.attn(x, h, w)
-        x = res + self.drop_path(attn)
-        x = x + self.drop_path(self.mlp(self.norm2(x), h=h, w=w))
+
+        if not self.cross_attn:
+            # self-attn
+            self_attn = self.attn(x, x, h, w)
+            x = res + self.drop_path(self_attn)
+            # mlp
+            x = x + self.drop_path(self.mlp(self.norm2(x), h=h, w=w))
+        else:
+            # cross-attn
+            cross_attn = self.attn2(x, kv, h, w)
+            x = res + self.drop_path(cross_attn)
+            # mlp
+            x = x + self.drop_path(self.mlp(self.norm3(x), h=h, w=w))
+            x = x + self.norm4(x)
+            # self-attn
+            self_attn = self.attn(x, x, h, w)
+            x = res + self.drop_path(self_attn)
+            # mlp
+            x = x + self.drop_path(self.mlp(self.norm2(x), h=h, w=w))
 
         return x
 
@@ -386,7 +412,6 @@ class ConvEmbed(nn.Module):
 class VisionTransformer(nn.Module):
     """ Vision Transformer with support for patch or hybrid CNN input stage
     """
-
     def __init__(self,
                  patch_size=16,
                  patch_stride=16,
@@ -497,7 +522,7 @@ class VisionTransformer(nn.Module):
             x = blk(x, H, W)
 
         if self.cls_token is not None:
-            cls_tokens, x = torch.split(x, [1, H * W], 1)
+            cls_tokens, x = torch.split(x, [1, H*W], 1)
         x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
 
         return x, cls_tokens
@@ -569,7 +594,7 @@ class ConvolutionalVisionTransformer(nn.Module):
             for k, v in pretrained_dict.items():
                 need_init = (
                         k.split('.')[0] in pretrained_layers
-                        or pretrained_layers[0] == '*'
+                        or pretrained_layers[0] is '*'
                 )
                 if need_init:
                     if verbose:
@@ -636,35 +661,3 @@ class ConvolutionalVisionTransformer(nn.Module):
         x = self.head(x)
 
         return x
-
-
-if __name__ == '__main__':
-    # print("---------------------------- to_2tuple ----------------------------")
-    # tuple2d = to_2tuple(16)
-    # print(tuple2d)
-    # print("---------------------------- LayerNorm ----------------------------")
-    # # 假设输入为 (batch_size, seq_length, hidden_size)
-    # batch_size = 1
-    # seq_length = 2
-    # hidden_size = 2
-    # x = torch.tensor([
-    #     [[1.0, 3.0]],
-    #     [[2.0, 4.0]]
-    # ], dtype=torch.float32)
-    #
-    # # 初始化模型并执行前向传播
-    # ln = LayerNorm(hidden_size)
-    # output = ln(x)
-    #
-    # # 输出结果
-    # print(x.shape)
-    # print(output.shape)
-    # print(output)
-    print("---------------------------- PointwiseConvMlp ----------------------------")
-    batch_size = 2
-    patch_size = 4
-    x = torch.randn(batch_size, patch_size*patch_size+1, 64)  # [batch_size, L, D]
-    pcm = PointwiseConvMlp(64, 128, True)
-    output = pcm(x, patch_size, patch_size)
-    print(x.shape)
-    print(output.shape)

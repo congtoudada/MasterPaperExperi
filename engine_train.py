@@ -8,77 +8,49 @@ from util.abnormal_utils import filt
 import sklearn.metrics as metrics
 
 
-def train_one_epoch(model_online: torch.nn.Module,
-                    model_target: torch.nn.Module,
+def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, loss_scaler, momentum_schedule,
+                    device: torch.device, epoch: int,
                     log_writer=None, args=None):
-    model_online.is_inference = False
-    model_target.is_inference = False
-    model_online.train()
-    # model_target.train()
-    model_online = model_online.float()
-    model_target = model_target.float()
-    metric_logger = misc.MetricLogger(delimiter="")
+    model.train(True)
+    model = model.float()
+    metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}]'.format(epoch)
+
+    if epoch >= args.start_TS_epoch:
+        model.train_TS = True
+        model.freeze_backbone()
 
     optimizer.zero_grad()
 
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
-    for data_iter_step, (sample1, sample2, grad_mask) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
-        sample1 = sample1.to(device, non_blocking=True)
-        sample2 = sample2.to(device, non_blocking=True)
+    for data_iter_step, (samples, pre_img, grad_mask, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+        targets = targets.to(device, non_blocking=True)
+        samples = samples.to(device, non_blocking=True)
         grad_mask = grad_mask.to(device, non_blocking=True)
+        pre_img = pre_img.to(device, non_blocking=True)
 
-        online_loss, online_pred, online_mask, ids_shuffle, ids_restore = model_online(sample1, grad_mask=grad_mask,
-                                                                                       mask_ratio=args.mask_ratio)
-        with torch.no_grad():
-            model_target.eval()
-            target_loss, target_pred, _, _, _ = model_target(sample2, grad_mask=grad_mask,
-                                                             ids_shuffle=ids_shuffle, ids_restore=ids_restore)
-        rec_cons_loss = misc.cons_loss(online_pred, online_mask, target_pred)
-        loss = online_loss + target_loss + args.gamma * rec_cons_loss
+        loss, _, _ = model(samples, pre_img, grad_mask=grad_mask, targets=targets, mask_ratio=args.mask_ratio)
         loss_value = loss.item()
-        online_loss_value = online_loss.item()
-        target_loss_value = target_loss.item()
-        rec_cons_loss_value = rec_cons_loss.item()
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
             sys.exit(1)
 
-        # loss_scaler(loss, optimizer, parameters=model_online.parameters(), update_grad=True)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        # EMA update for the teacher
-        with torch.no_grad():
-            ms = momentum_schedule[data_iter_step]  # momentum parameter
-            for param_q, param_k in zip(
-                    model_online.parameters(), model_target.parameters()
-            ):
-                param_k.data.mul_(ms).add_((1 - ms) * param_q.detach().data)
-
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
         metric_logger.update(loss=loss_value)
-        metric_logger.update(online_loss=online_loss_value)
-        metric_logger.update(target_loss=target_loss_value)
-        metric_logger.update(rec_cons_loss=rec_cons_loss_value)
 
         loss_value_reduce = misc.all_reduce_mean(loss_value)
-        online_loss_value_reduce = misc.all_reduce_mean(online_loss_value)
-        target_loss_value_reduce = misc.all_reduce_mean(target_loss_value)
-        rec_cons_loss_value_reduce = misc.all_reduce_mean(rec_cons_loss_value)
         if log_writer is not None:
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
             log_writer.add_scalar('train_loss', loss_value_reduce, epoch_1000x)
-            log_writer.add_scalar("online_loss", online_loss_value_reduce, epoch_1000x)
-            log_writer.add_scalar("target_loss", target_loss_value_reduce, epoch_1000x)
-            log_writer.add_scalar("rec_cons_loss", rec_cons_loss_value_reduce, epoch_1000x)
             log_writer.add_scalar('lr', lr, epoch_1000x)
 
     # gather the stats from all processes
@@ -87,29 +59,36 @@ def train_one_epoch(model_online: torch.nn.Module,
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
-def test_one_epoch(model: torch.nn.Module,
-                   data_loader: Iterable,
+def test_one_epoch(model: torch.nn.Module, data_loader: Iterable,
                    device: torch.device, epoch: int,
                    log_writer=None, args=None):
-    model.is_inference = True
     model.eval()
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Testing epoch: [{}]'.format(epoch)
 
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
+    if epoch >= args.start_TS_epoch:
+        model.train_TS = True
+        model.freeze_backbone()
 
     predictions = []
     labels = []
     videos = []
-    for data_iter_step, (sample, grads, label, vid, _) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+    for data_iter_step, (samples, pre_img, grads, targets, label, vid, _) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
         videos += list(vid)
         labels += list(label.detach().cpu().numpy())
 
-        sample = sample.to(device)
+        samples = samples.to(device)
+        pre_img = pre_img.to(device)
         grads = grads.to(device)
-        _, _, _, _, _, recon_error = model(sample, grad_mask=grads, mask_ratio=args.mask_ratio)
-
+        targets = targets.to(device)
+        _, _, _, recon_error = model(samples, pre_img, grad_mask=grads,targets=targets, mask_ratio=args.mask_ratio)
+        if isinstance(recon_error, list) or isinstance(recon_error, tuple):
+            if len(recon_error)==2:
+                recon_error = recon_error[0] + recon_error[1]
+            else:
+                recon_error = 2.2*recon_error[0] + 1.1*recon_error[1] +recon_error[2]
         recon_error = recon_error.detach().cpu().numpy()
         predictions += list(recon_error)
 
@@ -124,10 +103,11 @@ def test_one_epoch(model: torch.nn.Module,
     for vid in np.unique(videos):
         pred = predictions[np.array(videos) == vid]
         pred = np.nan_to_num(pred, nan=0.)
-        if args.dataset == 'avenue':
-            pred = filt(pred, range=38, mu=11)
+        if args.dataset=='avenue':
+            pred = filt(pred, range=102, mu=12)
         else:
-            raise ValueError('Unknown parameters for predictions postprocessing')
+            pred = filt(pred, range=102, mu=12)
+            # raise ValueError('Unknown parameters for predictions postprocessing')
         # pred = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
 
         filtered_preds.append(pred)

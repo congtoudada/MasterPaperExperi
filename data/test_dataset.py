@@ -1,21 +1,15 @@
-import argparse
 import glob
 import os
 import platform
+
 import cv2
 import numpy as np
 import torch.utils.data
-from PIL import Image
-from configs.configs import get_configs_avenue, get_configs_shanghai
-import os
-import glob
-
-from data.vid_transform import VideoTestTransform
 
 IMG_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tif"]
 
 
-class VadTestDataset(torch.utils.data.Dataset):
+class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
     def __init__(self, args):
         self.args = args
         if args.dataset == "avenue":
@@ -26,7 +20,9 @@ class VadTestDataset(torch.utils.data.Dataset):
             gt_path = args.shanghai_gt_path
         else:
             raise Exception("Unknown dataset!")
-        self.transform = VideoTestTransform(size=args.input_size)
+        self.ds_name = args.dataset
+        self.input_3d = args.input_3d
+        self.previous_nums = args.previous_nums
         self.data, self.labels, self.gradients = self._read_data(data_path, gt_path)
 
     def _read_data(self, data_path, gt_path):
@@ -56,34 +52,52 @@ class VadTestDataset(torch.utils.data.Dataset):
             gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.png")))
             gradients_path = sorted(gradients_path, key=lambda x: int(os.path.basename(x).split('.')[0]))
             gradients += gradients_path
-        # data: 原始训练图像
-        # gradients：运动梯度
         return data, labels, gradients
 
     def __getitem__(self, index):
-        frame_path = self.data[index]
-        frame = Image.open(frame_path)
-        gradient = Image.open(self.gradients[index])
+        current_img = cv2.imread(self.data[index])
+        dir_path, frame_no, len_frame_no = self.extract_meta_info(self.data, index)
+        previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums, length=len_frame_no)
+        # next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
+        # img = current_img
+        # if self.input_3d:
+        #     img = np.concatenate([previous_img, current_img, next_img], axis=-1)
+        img = np.concatenate([previous_img, current_img], axis=-1)
 
-        frame, gradient = self.transform(frame, gradient)
-        return frame, gradient, self.labels[index], self.data[index].split('/')[-2], self.data[index]
+        gradient = cv2.imread(self.gradients[index])
+        if img.shape[:2] != self.args.input_size[::-1]:
+            img = cv2.resize(img, self.args.input_size[::-1])
+            current_img = cv2.resize(current_img, self.args.input_size[::-1])
+            gradient = cv2.resize(gradient, self.args.input_size[::-1])
+        # mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
+        # target = np.concatenate((current_img, mask), axis=-1)
+        target = current_img.copy()
+        img = img.astype(np.float32)
+        gradient = gradient.astype(np.float32)
+        target = target.astype(np.float32)
+        img = (img - 127.5) / 127.5
+        target = (target - 127.5) / 127.5
+        img = np.swapaxes(img, 0, -1).swapaxes(1, -1)
+        target = np.swapaxes(target, 0, -1).swapaxes(1, -1)
+        gradient = np.swapaxes(gradient, 0, 1).swapaxes(0, -1)
+        previous_img, img = np.split(img, 2, axis=0)
+        return img, previous_img, gradient, target, self.labels[index], self.data[index].split('/')[-2], self.data[index]
+
+    def extract_meta_info(self, data, index):
+        frame_no = int(data[index].split("/")[-1].split('.')[0])
+        dir_path = "/".join(data[index].split("/")[:-1])
+        len_frame_no = len(data[index].split("/")[-1].split('.')[0])
+        return dir_path, frame_no, len_frame_no
+
+    def read_prev_next_frame_if_exists(self, dir_path, frame_no, direction=-3, length=1):
+        frame_path = dir_path + "/" + str(frame_no + direction).zfill(length) + self.extension
+        if os.path.exists(frame_path):
+            return cv2.imread(frame_path)
+        else:
+            return cv2.imread(dir_path + "/" + str(frame_no).zfill(length) + self.extension)
 
     def __len__(self):
         return len(self.data)
 
     def __repr__(self):
         return self.__class__.__name__
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='avenue')
-    args = parser.parse_args()
-    if args.dataset == 'avenue':
-        args = get_configs_avenue()
-    else:
-        args = get_configs_shanghai()
-    vtd = VadTestDataset(args)
-    print(f"len: {vtd.__len__()}")  # avenue: 15324
-    pkg = vtd.__getitem__(vtd.__len__() - 1)
-    print(f"item: {pkg[0].shape} {pkg[1].shape} {pkg[2].shape}")

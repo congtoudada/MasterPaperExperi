@@ -11,13 +11,11 @@
 
 import builtins
 import datetime
-import math
 import os
 import time
 from collections import defaultdict, deque
 from pathlib import Path
 
-import numpy as np
 import torch
 import torch.distributed as dist
 from torch import inf
@@ -133,14 +131,14 @@ class MetricLogger(object):
         space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
         log_msg = [
             header,
-            '[{0' + space_fmt + '}/{1}] ',
-            'eta: {eta} ',
-            '{meters} ',
-            'time: {time} ',
-            'data: {data} '
+            '[{0' + space_fmt + '}/{1}]',
+            'eta: {eta}',
+            '{meters}',
+            'time: {time}',
+            'data: {data}'
         ]
         if torch.cuda.is_available():
-            log_msg.append('max mem: {memory:.0f} MB')
+            log_msg.append('max mem: {memory:.0f}')
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
         for obj in iterable:
@@ -290,50 +288,48 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     if norm_type == inf:
         total_norm = max(p.grad.detach().abs().max().to(device) for p in parameters)
     else:
-        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]),
-                                norm_type)
+        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]), norm_type)
     return total_norm
 
 
-def save_model(args, epoch, model_online, model_target, optimizer, loss_scaler, momentum_schedule,
-               latest=False, best=False):
+def save_model(args, epoch, model, optimizer, loss_scaler, latest=False, best=False, student=False):
     if latest:
         output_dir = Path(args.output_dir)
         if loss_scaler is not None:
             checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "latest")]
             for checkpoint_path in checkpoint_paths:
                 to_save = {
-                    'model_online': model_online.state_dict(),
-                    'model_target': model_target.state_dict(),
+                    'model': model.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'epoch': epoch,
                     'scaler': loss_scaler.state_dict(),
-                    'momentum': momentum_schedule.tolist(),
                     'args': args,
                 }
+
                 save_on_master(to_save, checkpoint_path)
     if best:
         output_dir = Path(args.output_dir)
         if loss_scaler is not None:
-            checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "best")]
+            if not student:
+                checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "best")]
+            else:
+                checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % "best-student")]
             for checkpoint_path in checkpoint_paths:
                 to_save = {
-                    'model_online': model_online.state_dict(),
-                    'model_target': model_target.state_dict(),
+                    'model': model.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'epoch': epoch,
                     'scaler': loss_scaler.state_dict(),
-                    'momentum': momentum_schedule.tolist(),
                     'args': args,
                 }
+
                 save_on_master(to_save, checkpoint_path)
 
 
-def load_model(args, model_online, model_target, optimizer=None, loss_scaler=None, momentum_schedule=None):
+def load_model(args, model, optimizer=None, loss_scaler=None):
     if args.resume:
         checkpoint = torch.load(os.path.join(args.output_dir, "checkpoint-latest.pth"), map_location='cpu')
-        model_online.load_state_dict(checkpoint['model_online'])
-        model_target.load_state_dict(checkpoint['model_target'])
+        model.load_state_dict(checkpoint['model'])
         print("Resume checkpoint %s" % args.resume)
         if optimizer:
             if 'optimizer' in checkpoint and 'epoch' in checkpoint and not (hasattr(args, 'eval') and args.eval):
@@ -341,8 +337,6 @@ def load_model(args, model_online, model_target, optimizer=None, loss_scaler=Non
                 args.start_epoch = checkpoint['epoch'] + 1
                 if 'scaler' in checkpoint:
                     loss_scaler.load_state_dict(checkpoint['scaler'])
-                if 'momentum' in checkpoint:
-                    momentum_schedule = np.array(checkpoint['momentum'])
                 print("With optim & sched!")
 
 
@@ -355,37 +349,3 @@ def all_reduce_mean(x):
         return x_reduce.item()
     else:
         return x
-
-
-def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epochs=0,
-                     start_warmup_value=0, warmup_steps=-1):
-    warmup_schedule = np.array([])
-    warmup_iters = warmup_epochs * niter_per_ep
-    if warmup_steps > 0:
-        warmup_iters = warmup_steps
-    print("Set warmup steps = %d" % warmup_iters)
-    if warmup_epochs > 0:
-        warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
-
-    iters = np.arange(epochs * niter_per_ep - warmup_iters)
-    schedule = np.array(
-        [final_value + 0.5 * (base_value - final_value) * (1 + math.cos(math.pi * i / (len(iters)))) for i in iters])
-
-    schedule = np.concatenate((warmup_schedule, schedule))
-
-    assert len(schedule) == epochs * niter_per_ep
-    return schedule
-
-
-def cons_loss(online_pred, online_mask, target_pred):
-    # On the same masked inputs
-    # Including the masked / unmasked patches
-    # n, c, _, = online_pred.shape
-    # online_pred = online_pred.reshape(n, c, -1)
-    # online_pred = torch.einsum('ncl->nlc', online_pred)
-    # target_pred = target_pred.reshape(n, c, -1)
-    # target_pred = torch.einsum('ncl->nlc', target_pred)
-    rec_cons_loss = (online_pred - target_pred.detach()) ** 2
-    rec_cons_loss = rec_cons_loss.mean(dim=-1)  # [N, L], mean loss per patch
-    rec_cons_loss = (rec_cons_loss * online_mask).sum() / online_mask.sum()  # mean loss on removed patches
-    return rec_cons_loss

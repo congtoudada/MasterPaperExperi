@@ -61,7 +61,7 @@ if __name__ == '__main__':
 
     # 抽帧UBnormal
     img_path = rf"H:\AI\dataset\VAD\UBnormal\train\frames"
-    for i in range(5):
+    for i in range(28):
         video_path = rf"H:\AI\dataset\VAD\UBnormal\Scene{i+1}"
         extract(video_path, img_path, step)
 
