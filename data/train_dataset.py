@@ -1,5 +1,6 @@
 import glob
 import os
+import platform
 import random
 import time
 
@@ -37,6 +38,10 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
         dirs = list(glob.glob(os.path.join(data_path, "train", "frames", "*")))
         for dir in dirs:
             imgs_path = list(glob.glob(os.path.join(dir, f"*{extension}")))
+            # Windows适配
+            if platform.system() == "Windows":
+                for i in range(len(imgs_path)):
+                    imgs_path[i] = imgs_path[i].replace("\\", "/")
             data += imgs_path
             video_name = os.path.basename(dir)
             gradients_path = []
