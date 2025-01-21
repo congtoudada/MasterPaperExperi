@@ -15,22 +15,27 @@ class VideoTrainTransform:
         self.random_thresh = random_thresh
         self.interpolation = interpolation
         self.to_tensor = transforms.ToTensor()
+        self.resize = transforms.Resize(self.size)
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
     def __call__(self, img1, img2, grad):
-        # https://blog.csdn.net/qq_36915686/article/details/122136299
-        i, j, h, w = transforms.RandomResizedCrop.get_params(img1, self.scale, self.ratio)
-        img1 = F.resized_crop(img1, i, j, h, w, self.size, self.interpolation)
-        img2 = F.resized_crop(img2, i, j, h, w, self.size, self.interpolation)
-        grad = F.resized_crop(grad, i, j, h, w, self.size, self.interpolation)
+        img1 = self.resize(img1)
+        img2 = self.resize(img1)
+        grad = self.resize(grad)
 
-        if random.random() < self.random_thresh:
-            img1 = F.hflip(img1)
-            img2 = F.hflip(img2)
-            grad = F.hflip(grad)
-
-        # img1.show()
-        # grad.show()
+        # # https://blog.csdn.net/qq_36915686/article/details/122136299
+        # i, j, h, w = transforms.RandomResizedCrop.get_params(img1, self.scale, self.ratio)
+        # img1 = F.resized_crop(img1, i, j, h, w, self.size, self.interpolation)
+        # img2 = F.resized_crop(img2, i, j, h, w, self.size, self.interpolation)
+        # grad = F.resized_crop(grad, i, j, h, w, self.size, self.interpolation)
+        #
+        # if random.random() < self.random_thresh:
+        #     img1 = F.hflip(img1)
+        #     img2 = F.hflip(img2)
+        #     grad = F.hflip(grad)
+        #
+        # # img1.show()
+        # # grad.show()
         img1 = self.normalize(self.to_tensor(img1))
         img2 = self.normalize(self.to_tensor(img2))
         grad = self.to_tensor(grad)

@@ -120,8 +120,8 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
         )
         log_stats_train = {**{f'train_{k}': v for k, v in train_stats.items()}, 'epoch': epoch}
 
-        # 每5个epoch评估一次，超过eval epoch将持续评估
-        if epoch % 5 == 0 or epoch > args.eval_epoch:
+        # 每n个epoch评估一次，超过eval epoch将持续评估
+        if epoch % 3 == 0 or epoch > args.eval_epoch:
             # 使用目标模型评估
             test_stats = test_one_epoch(
                 model_target, data_loader_test, device, epoch, log_writer=log_writer, args=args

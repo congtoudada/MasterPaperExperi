@@ -4,8 +4,8 @@ import ml_collections
 def get_configs_avenue():
     config = ml_collections.ConfigDict()
     config.batch_size = 64
-    config.epochs = 200
-    config.eval_epoch = 100
+    config.epochs = 300
+    config.eval_epoch = 150
     config.mask_ratio = 0.75
     # config.start_TS_epoch = 100
     # config.masking_method = "random_masking"
@@ -13,18 +13,18 @@ def get_configs_avenue():
     config.abnormal_score_func = 'L2'
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
-    config.input_size = (256, 448)  # (360,640) --> (320, 640) --> (256, 448) 16patch有448个块
+    config.input_size = (320, 640)  # (360,640) --> (320, 640) --> (256, 448)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
     config.run_type = 'train'  # train & inference
-    config.resume = True
+    config.resume = False
     # Optimizer parameters
     config.weight_decay = 0.05
-    config.lr = 1e-4
+    config.lr = 1e-3
     # batch_size越大，momentum应该适当调小，以避免过度平滑更新。
     # batch_size较小，momentum可以相对较大，以帮助抵抗噪声并加速收敛。
     # for example use 0.9995 with batch size of 256.
-    config.momentum_target = 0.996
+    config.momentum_target = 0.99
     config.gamma = 1.0  # 两帧间重建损失权重
 
     # Dataset parameters
