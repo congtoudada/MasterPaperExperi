@@ -6,7 +6,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn import BCELoss
 
-from model.cvt import ConvEmbed, Block
+from model.cvt import ConvEmbed, Block, HiLo
 from util.morphology import Erosion2d, Dilation2d
 
 
@@ -49,10 +49,16 @@ class MaskedAutoencoderCvT(nn.Module):
             torch.zeros(1, 1, embed_dim)
         )
 
+        self.aug_atten = nn.ModuleList([
+            HiLo(dim=embed_dim, num_heads=4+4*i, window_size=2+2*i, alpha=0.5)
+            for i in range(2)])
+        self.aug_norm = norm_layer(embed_dim)
+
         self.blocks = nn.ModuleList([
             Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
+
         self.cls_anomalies = nn.Linear(embed_dim, 1)
         # --------------------------------------------------------------------------
 
@@ -212,6 +218,12 @@ class MaskedAutoencoderCvT(nn.Module):
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self.masking(x, mask_ratio, grad_mask)
         # x = rearrange(x, 'b c h w -> b (h w) c')
+
+        # TODO: 其他注意力 (batch, (masked_h * masked_w), C)
+        for blk in self.aug_atten:
+            x = blk(x)
+        # x = self.aug_norm(x)
+
         # append cls token
         cls_token = self.cls_token
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
