@@ -15,7 +15,7 @@ def get_configs_avenue():
     config.input_size = (320, 640)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = 'train'  # train & inference
+    config.run_type = 'inference'  # train & inference
     config.resume = False
     # Optimizer parameters
     config.weight_decay = 0.05  # 0.05

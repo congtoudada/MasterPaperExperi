@@ -93,31 +93,32 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
         )
         log_stats_train = {**{f'train_{k}': v for k, v in train_stats.items()}, 'epoch': epoch}
 
-        test_stats = test_one_epoch(
-            model, data_loader_test, device, epoch, log_writer=log_writer, args=args
-        )
-        log_stats_test = {**{f'test_{k}': v for k, v in test_stats.items()}, 'epoch': epoch}
-
         if args.output_dir:
             misc.save_model(args=args, model=model, optimizer=optimizer,
                             loss_scaler=loss_scaler, epoch=epoch, latest=True)
-        if test_stats['micro'] > best_micro:
-            best_micro = test_stats['micro']
-            misc.save_model(args=args, model=model, optimizer=optimizer,
-                            loss_scaler=loss_scaler, epoch=epoch, best=True)
-        if args.start_TS_epoch <= epoch:
-            if test_stats['micro'] > best_micro_student:
-                best_micro_student = test_stats['micro']
+
+        if epoch % 2 == 0 or epoch > int(args.epochs * 0.75):
+            test_stats = test_one_epoch(
+                model, data_loader_test, device, epoch, log_writer=log_writer, args=args
+            )
+            log_stats_test = {**{f'test_{k}': v for k, v in test_stats.items()}, 'epoch': epoch}
+            if test_stats['micro'] > best_micro:
+                best_micro = test_stats['micro']
                 misc.save_model(args=args, model=model, optimizer=optimizer,
-                                loss_scaler=loss_scaler, epoch=epoch, best=True, student=True)
+                                loss_scaler=loss_scaler, epoch=epoch, best=True)
+            if args.start_TS_epoch <= epoch:
+                if test_stats['micro'] > best_micro_student:
+                    best_micro_student = test_stats['micro']
+                    misc.save_model(args=args, model=model, optimizer=optimizer,
+                                    loss_scaler=loss_scaler, epoch=epoch, best=True, student=True)
+            with open(os.path.join(args.output_dir, "log_test.txt"), mode="a", encoding="utf-8") as f:
+                f.write(json.dumps(log_stats_test) + "\n")
 
         if args.output_dir:
             if log_writer is not None:
                 log_writer.flush()
             with open(os.path.join(args.output_dir, "log_train.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats_train) + "\n")
-            with open(os.path.join(args.output_dir, "log_test.txt"), mode="a", encoding="utf-8") as f:
-                f.write(json.dumps(log_stats_test) + "\n")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
