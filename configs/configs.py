@@ -31,7 +31,7 @@ def get_configs_avenue():
 
     config.start_epoch = 0
     config.print_freq = 10
-    config.num_workers = 10
+    config.num_workers = 0
     config.pin_mem = False
 
     return config
