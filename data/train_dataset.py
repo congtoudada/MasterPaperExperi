@@ -64,7 +64,7 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         random_uniform = random.uniform(0, 1)
-        previous_idx = random.randint(3, self.previous_nums)  # 返回 [3, self.future_nums]
+        previous_idx = random.randint(1, self.previous_nums)  # 返回 [1, self.future_nums]
         if random_uniform <= self.percent_abnormal:  # 叠加异常
             img = cv2.imread(self.abnormal_data[index])
             dir_path, frame_no, len_frame_no = self.extract_meta_info(self.abnormal_data, index)

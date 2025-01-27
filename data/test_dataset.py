@@ -23,6 +23,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
         self.ds_name = args.dataset
         self.input_3d = args.input_3d
         self.previous_nums = args.previous_nums
+        self.previous_test = int(self.previous_nums * 0.5)
         self.data, self.labels, self.gradients = self._read_data(data_path, gt_path)
 
     def _read_data(self, data_path, gt_path):
@@ -57,7 +58,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
     def __getitem__(self, index):
         current_img = cv2.imread(self.data[index])
         dir_path, frame_no, len_frame_no = self.extract_meta_info(self.data, index)
-        previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-4, length=len_frame_no)
+        previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-1, length=len_frame_no)
         # next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
         # img = current_img
         # if self.input_3d:

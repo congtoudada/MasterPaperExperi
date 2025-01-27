@@ -83,12 +83,12 @@ def test_one_epoch(model: torch.nn.Module, data_loader: Iterable,
         pre_img = pre_img.to(device)
         grads = grads.to(device)
         targets = targets.to(device)
-        _, _, _, recon_error = model(samples, pre_img, grad_mask=grads,targets=targets, mask_ratio=args.mask_ratio)
+        _, _, _, recon_error = model(samples, pre_img, grad_mask=grads, targets=targets, mask_ratio=args.mask_ratio)
         if isinstance(recon_error, list) or isinstance(recon_error, tuple):
-            if len(recon_error)==2:
-                recon_error = recon_error[0] + recon_error[1]
+            if len(recon_error) == 2:
+                recon_error = 1.05*recon_error[0] + 0.53*recon_error[1]
             else:
-                recon_error = 2.2*recon_error[0] + 1.1*recon_error[1] +recon_error[2]
+                recon_error = 1.05*recon_error[0] + 0.53*recon_error[1] + 0.53*recon_error[2]
         recon_error = recon_error.detach().cpu().numpy()
         predictions += list(recon_error)
 
@@ -103,8 +103,8 @@ def test_one_epoch(model: torch.nn.Module, data_loader: Iterable,
     for vid in np.unique(videos):
         pred = predictions[np.array(videos) == vid]
         pred = np.nan_to_num(pred, nan=0.)
-        if args.dataset=='avenue':
-            pred = filt(pred, range=102, mu=12)
+        if args.dataset == 'avenue':
+            pred = filt(pred, range=100, mu=11)
         else:
             pred = filt(pred, range=102, mu=12)
             # raise ValueError('Unknown parameters for predictions postprocessing')
