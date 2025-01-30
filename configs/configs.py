@@ -3,9 +3,9 @@ import ml_collections
 
 def get_configs_avenue():
     config = ml_collections.ConfigDict()
-    config.batch_size = 32
+    config.batch_size = 64
     config.epochs = 100
-    config.mask_ratio = 0.5
+    config.mask_ratio = 0.85
     config.start_TS_epoch = 50
     config.masking_method = "random_masking"
     config.output_dir = "experiments/avenue"  # the checkpoints will be loaded from here
