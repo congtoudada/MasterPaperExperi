@@ -1,3 +1,4 @@
+import os
 from collections.abc import Iterable
 
 import numpy as np
@@ -85,14 +86,32 @@ def evaluate_model(predictions, labels, videos,
             pred = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
 
         pred = np.nan_to_num(pred, nan=0.)
+
         # plt.plot(pred)
         # plt.xlabel("Frames")
         # plt.ylabel("Anomaly Score")
         # plt.savefig(f"graphs/{vid}.png")
         # plt.close()
+
         filtered_preds.append(pred)
         lbl = labels[np.array(videos) == vid]
         filtered_labels.append(lbl)
+
+        # # pred + label
+        # # Plot the anomaly score (pred) and the label (lbl) on the same graph
+        # pred_norm = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
+        # plt.plot(pred_norm, label='Anomaly Score', color='b')
+        # plt.plot(lbl, label='Ground Truth', color='r', linestyle='--')
+        # plt.xlabel("Frames")
+        # plt.ylabel("Anomaly Score")
+        # plt.legend()
+        # plt.title(f"Anomaly Detection: Video {vid}")
+        #
+        # # Save the plot for this video
+        # os.makedirs("graphs/avenue", exist_ok=True)
+        # plt.savefig(f"graphs/avenue/{vid}.png")
+        # plt.close()
+
         lbl = np.array([0] + list(lbl) + [1])
         pred = np.array([0] + list(pred) + [1])
         fpr, tpr, _ = metrics.roc_curve(lbl, pred)
