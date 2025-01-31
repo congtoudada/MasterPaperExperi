@@ -21,7 +21,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
         else:
             raise Exception("Unknown dataset!")
         self.ds_name = args.dataset
-        self.input_3d = args.input_3d
+        # self.input_3d = args.input_3d
         self.previous_nums = args.previous_nums
         self.previous_test = int(self.previous_nums * 0.5)
         self.data, self.labels, self.gradients = self._read_data(data_path, gt_path)
@@ -57,21 +57,21 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         current_img = cv2.imread(self.data[index])
+        target = current_img.copy()
         dir_path, frame_no, len_frame_no = self.extract_meta_info(self.data, index)
-        previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-1, length=len_frame_no)
-        # next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
-        # img = current_img
-        # if self.input_3d:
-        #     img = np.concatenate([previous_img, current_img, next_img], axis=-1)
-        img = np.concatenate([previous_img, current_img], axis=-1)
+        pre_pre_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums*2,
+                                                          length=len_frame_no)
+        pre_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums,
+                                                      length=len_frame_no)
+        img = np.concatenate([pre_pre_img, pre_img, current_img], axis=-1)
 
         gradient = cv2.imread(self.gradients[index])
         if img.shape[:2] != self.args.input_size[::-1]:
             img = cv2.resize(img, self.args.input_size[::-1])
-            current_img = cv2.resize(current_img, self.args.input_size[::-1])
+            target = cv2.resize(target, self.args.input_size[::-1])
             gradient = cv2.resize(gradient, self.args.input_size[::-1])
         mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
-        target = np.concatenate((current_img, mask), axis=-1)
+        target = np.concatenate((target, mask), axis=-1)
         img = img.astype(np.float32)
         gradient = gradient.astype(np.float32)
         target = target.astype(np.float32)
@@ -80,8 +80,8 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
         img = np.swapaxes(img, 0, -1).swapaxes(1, -1)
         target = np.swapaxes(target, 0, -1).swapaxes(1, -1)
         gradient = np.swapaxes(gradient, 0, 1).swapaxes(0, -1)
-        previous_img, img = np.split(img, 2, axis=0)
-        return img, previous_img, gradient, target, self.labels[index], self.data[index].split('/')[-2], self.data[index]
+        pre_pre_img, pre_img, img = np.split(img, 3, axis=0)
+        return pre_pre_img, pre_img, img, gradient, target, self.labels[index], self.data[index].split('/')[-2], self.data[index]
 
     def extract_meta_info(self, data, index):
         frame_no = int(data[index].split("/")[-1].split('.')[0])

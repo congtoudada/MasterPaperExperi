@@ -21,8 +21,9 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
         else:
             raise Exception("Unknown dataset!")
         self.percent_abnormal = args.percent_abnormal
-        self.input_3d = args.input_3d
+        # self.input_3d = args.input_3d
         self.previous_nums = args.previous_nums
+        self.previous_nums2 = args.previous_nums * 2
         self.abnormal_data, self.data, self.gradients, self.masks_abnormal = self._read_data(data_path)
 
     def _read_data(self, data_path):
@@ -64,24 +65,23 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         random_uniform = random.uniform(0, 1)
-        previous_idx = random.randint(1, self.previous_nums)  # 返回 [1, self.future_nums]
         if random_uniform <= self.percent_abnormal:  # 叠加异常
             img = cv2.imread(self.abnormal_data[index])
             dir_path, frame_no, len_frame_no = self.extract_meta_info(self.abnormal_data, index)
-            previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-previous_idx, length=len_frame_no)
-            img = np.concatenate([previous_img, img], axis=-1)
-            # next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
-            # if self.input_3d:
-            #     img = np.concatenate([previous_img, img, next_img], axis=-1)
+            pre_pre_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums2,
+                                                              length=len_frame_no)
+            pre_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums,
+                                                          length=len_frame_no)
+            img = np.concatenate([pre_pre_img, pre_img, img], axis=-1)
             mask = cv2.imread(self.masks_abnormal[index])[:, :, :1]
         else:  # 不叠加异常
             img = cv2.imread(self.data[index])
             dir_path, frame_no, len_frame_no = self.extract_meta_info(self.data, index)
-            previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-previous_idx, length=len_frame_no)
-            img = np.concatenate([previous_img, img], axis=-1)
-            # next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
-            # if self.input_3d:
-            #     img = np.concatenate([previous_img, img, next_img], axis=-1)
+            pre_pre_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums2,
+                                                              length=len_frame_no)
+            pre_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-self.previous_nums,
+                                                          length=len_frame_no)
+            img = np.concatenate([pre_pre_img, pre_img, img], axis=-1)
             mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
         gradient = cv2.imread(self.gradients[index])
         target = cv2.imread(self.data[index])
@@ -103,8 +103,8 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
         target = (target - 127.5) / 127.5
         target = np.swapaxes(target, 0, -1).swapaxes(1, -1)
         gradient = np.swapaxes(gradient, 0, 1).swapaxes(0, -1)
-        previous_img, img = np.split(img, 2, axis=0)
-        return img, previous_img, gradient, target
+        pre_pre_img, pre_img, img = np.split(img, 3, axis=0)
+        return pre_pre_img, pre_img, img, gradient, target
 
     def extract_meta_info(self, data, index):
         frame_no = int(data[index].split("/")[-1].split('.')[0])

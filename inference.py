@@ -26,18 +26,19 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
     labels = []
     videos = []
     frames = []
-    for data_iter_step, (samples, pre_img, grads, targets, label, vid, frame_name) in enumerate(
+    for data_iter_step, (pre_pre_imgs, pre_imgs, imgs, grads, targets, label, vid, frame_name) in enumerate(
             metric_logger.log_every(data_loader, args.print_freq, header)):
         videos += list(vid)
         labels += list(label.detach().cpu().numpy())
         frames += list(frame_name)
-        samples = samples.to(device)
-        pre_img = pre_img.to(device)
+        pre_pre_imgs = pre_pre_imgs.to(device)
+        pre_imgs = pre_imgs.to(device)
+        imgs = imgs.to(device)
         grads = grads.to(device)
         targets = targets.to(device)
         model.train_TS = True  # student-teacher reconstruction error
-        _, _, _, recon_error_st_tc = model(samples, pre_img, targets=targets, grad_mask=grads,
-                                           mask_ratio=args.mask_ratio)
+        _, _, _, recon_error_st_tc = model(pre_pre_imgs, pre_imgs, imgs, targets=targets, grad_mask=grads,
+                                           mask_ratio1=args.mask_ratio1, mask_ratio2=args.mask_ratio2)
         recon_error_st_tc[0] = recon_error_st_tc[0].detach().cpu().numpy()
         recon_error_st_tc[1] = recon_error_st_tc[1].detach().cpu().numpy()
         if len(recon_error_st_tc) > 2:

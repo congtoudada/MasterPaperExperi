@@ -249,26 +249,30 @@ class MaskedAutoencoderCvT(nn.Module):
 
         return x
 
-    def forward_decoder(self, x_unmasked, x_masked_latent, ids_restore):
+    def forward_decoder(self, x_unmasked, x_masked_latent1, ids_restore1, x_masked_latent2, ids_restore2):
         # embed tokens
         x_unmasked = self.decoder_embed(x_unmasked)
-        x_masked_latent = self.decoder_embed(x_masked_latent)
+        x_masked_latent1 = self.decoder_embed(x_masked_latent1)
+        x_masked_latent2 = self.decoder_embed(x_masked_latent2)
 
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x_masked_latent.shape[0], ids_restore.shape[1] + 1 - x_masked_latent.shape[1], 1)
-        x_ = torch.cat([x_masked_latent[:, 1:, :], mask_tokens], dim=1)  # no cls token
-        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_masked_latent.shape[2]))  # unshuffle
-        x = torch.cat([x_masked_latent[:, :1, :], x_], dim=1)  # append cls token
+        mask_tokens1 = self.mask_token.repeat(x_masked_latent1.shape[0], ids_restore1.shape[1] + 1 - x_masked_latent1.shape[1], 1)
+        x1_ = torch.cat([x_masked_latent1[:, 1:, :], mask_tokens1], dim=1)  # no cls token
+        x1_ = torch.gather(x1_, dim=1, index=ids_restore1.unsqueeze(-1).repeat(1, 1, x_masked_latent1.shape[2]))  # unshuffle
+        x1 = torch.cat([x_masked_latent1[:, :1, :], x1_], dim=1)  # append cls token
+
+        mask_tokens2 = self.mask_token.repeat(x_masked_latent2.shape[0], ids_restore2.shape[1] + 1 - x_masked_latent2.shape[1], 1)
+        x2_ = torch.cat([x_masked_latent2[:, 1:, :], mask_tokens2], dim=1)  # no cls token
+        x2_ = torch.gather(x2_, dim=1, index=ids_restore2.unsqueeze(-1).repeat(1, 1, x_masked_latent2.shape[2]))  # unshuffle
+        x2 = torch.cat([x_masked_latent2[:, :1, :], x2_], dim=1)  # append cls token
 
         # apply Transformer blocks
-        # # self - attention
-        # for blk in self.decoder_blocks:
-        #     x = blk(x, x_unmasked, self.H, self.W)
-        # x = self.decoder_norm(x)
-        # cross - attention
         for blk in self.decoder_blocks:
-            x = blk(x, x_unmasked, self.H, self.W)
-        x = self.decoder_norm(x)
+            x1 = blk(x1, x_unmasked, self.H, self.W)
+        for blk in self.decoder_blocks:
+            x2 = blk(x2, x1, self.H, self.W)
+
+        x = self.decoder_norm(x2)
 
         # predictor projection
         x = self.decoder_pred(x)
@@ -278,30 +282,42 @@ class MaskedAutoencoderCvT(nn.Module):
 
         return x
 
-    def forward_decoder_TS(self, x_unmasked, x_masked_latent, ids_restore):
+    def forward_decoder_TS(self, x_unmasked, x_masked_latent1, ids_restore1, x_masked_latent2, ids_restore2):
         # embed tokens
         x_unmasked = self.decoder_embed(x_unmasked)
-        x_masked_latent = self.decoder_embed(x_masked_latent)
+        x_masked_latent1 = self.decoder_embed(x_masked_latent1)
+        x_masked_latent2 = self.decoder_embed(x_masked_latent2)
 
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x_masked_latent.shape[0], ids_restore.shape[1] + 1 - x_masked_latent.shape[1], 1)
-        x_ = torch.cat([x_masked_latent[:, 1:, :], mask_tokens], dim=1)  # no cls token
-        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_masked_latent.shape[2]))  # unshuffle
-        x = torch.cat([x_masked_latent[:, :1, :], x_], dim=1)  # append cls token
+        mask_tokens1 = self.mask_token.repeat(x_masked_latent1.shape[0], ids_restore1.shape[1] + 1 - x_masked_latent1.shape[1], 1)
+        x1_ = torch.cat([x_masked_latent1[:, 1:, :], mask_tokens1], dim=1)  # no cls token
+        x1_ = torch.gather(x1_, dim=1, index=ids_restore1.unsqueeze(-1).repeat(1, 1, x_masked_latent1.shape[2]))  # unshuffle
+        x1 = torch.cat([x_masked_latent1[:, :1, :], x1_], dim=1)  # append cls token
+
+        mask_tokens2 = self.mask_token.repeat(x_masked_latent2.shape[0], ids_restore2.shape[1] + 1 - x_masked_latent2.shape[1], 1)
+        x2_ = torch.cat([x_masked_latent2[:, 1:, :], mask_tokens2], dim=1)  # no cls token
+        x2_ = torch.gather(x2_, dim=1, index=ids_restore2.unsqueeze(-1).repeat(1, 1, x_masked_latent2.shape[2]))  # unshuffle
+        x2 = torch.cat([x_masked_latent2[:, :1, :], x2_], dim=1)  # append cls token
 
         # apply Student Transformer blocks
         for idx in range(0, self.student_depth):
-            x = self.decoder_blocks[idx](x, x_unmasked, self.H, self.W)
-        x_student = self.decoder_student_block(x, x_unmasked, self.H, self.W)
+            x1 = self.decoder_blocks[idx](x1, x_unmasked, self.H, self.W)
+        for idx in range(0, self.student_depth):
+            x2 = self.decoder_blocks[idx](x2, x1, self.H, self.W)
+
+        x_student = self.decoder_student_block(x1, x_unmasked, self.H, self.W)
+        x_student = self.decoder_student_block(x2, x_student, self.H, self.W)
         x_student = self.decoder_student_norm(x_student)
         x_student = self.decoder_student_pred(x_student)
         x_student = x_student[:, 1:, :]
 
         for idx in range(self.student_depth, len(self.decoder_blocks)):
-            x = self.decoder_blocks[idx](x, x_unmasked, self.H, self.W)
+            x1 = self.decoder_blocks[idx](x1, x_unmasked, self.H, self.W)
+        for idx in range(self.student_depth, len(self.decoder_blocks)):
+            x2 = self.decoder_blocks[idx](x2, x1, self.H, self.W)
 
         # predictor projection
-        x = self.decoder_norm(x)
+        x = self.decoder_norm(x2)
         x = self.decoder_pred(x)
         # remove cls token
         x = x[:, 1:, :]
@@ -345,49 +361,49 @@ class MaskedAutoencoderCvT(nn.Module):
 
         return loss
 
-    def forward(self, imgs, pre_img, targets, grad_mask=None, mask_ratio=0.75):
-
-        mask_latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
-        unmask_latent = self.forward_encoder_no_masking(pre_img)
+    def forward(self, pre_pre_imgs, pre_imgs, imgs, targets, grad_mask=None, mask_ratio1=0.5, mask_ratio2=0.95):
+        mask_latent1, mask1, ids_restore1 = self.forward_encoder(pre_imgs, mask_ratio1)
+        mask_latent2, mask2, ids_restore2 = self.forward_encoder(imgs, mask_ratio2)
+        unmask_latent = self.forward_encoder_no_masking(pre_pre_imgs)  # 必须放最后
 
         if self.train_TS is False:
-            pred = self.forward_decoder(unmask_latent, mask_latent, ids_restore)  # [N, L, p*p*3]
-            loss = self.forward_loss(targets, grad_mask, pred, mask)
+            pred = self.forward_decoder(unmask_latent, mask_latent1, ids_restore1, mask_latent2, ids_restore2)  # [N, L, p*p*3]
+            loss = self.forward_loss(targets, grad_mask, pred, mask2)
             b, c, h, w = targets.shape
             target_labels = self.patchify(targets[:, -1:, :, :], chans=1).mean(2)
             num_patches = target_labels.shape[1]
             target_labels = einops.rearrange(target_labels, 'b p->(b p)', p=num_patches)
-            flatten_mask = einops.rearrange(mask, 'b p->(b p)', p=num_patches)
+            flatten_mask = einops.rearrange(mask2, 'b p->(b p)', p=num_patches)
             target_labels = target_labels[flatten_mask == 0]
-            target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1-mask_ratio)))
+            target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1-mask_ratio2)))
             target_labels = (target_labels != -1) * 1
             # cls_token = latent[:, -1]
-            pred_anomalies = torch.sigmoid(self.cls_anomalies(mask_latent[:, 1:, :]).squeeze())
+            pred_anomalies = torch.sigmoid(self.cls_anomalies(mask_latent2[:, 1:, :]).squeeze())
             cls_loss = self.cls_loss(pred_anomalies, target_labels.float())
             loss = loss + 0.5 * cls_loss
             if self.training:
-                return loss, pred, mask
+                return loss, pred, mask2
             else:
-                return loss, pred, mask, self.abnormal_score(targets, pred, mask, grad_mask, pred_anomalies)
+                return loss, pred, mask2, self.abnormal_score(targets, pred, mask2, grad_mask, pred_anomalies)
         else:
-            pred_stud, pred_teacher = self.forward_decoder_TS(unmask_latent, mask_latent, ids_restore)  # [N, L, p*p*3]
-            loss = self.forward_loss_TS(pred_stud, pred_teacher, mask)
+            pred_stud, pred_teacher = self.forward_decoder_TS(unmask_latent, mask_latent1, ids_restore1, mask_latent2, ids_restore2)  # [N, L, p*p*3]
+            loss = self.forward_loss_TS(pred_stud, pred_teacher, mask2)
             b, c, h, w = targets.shape
             target_labels = self.patchify(targets[:, -1:, :], chans=1).mean(2)
             num_patches = target_labels.shape[1]
             target_labels = einops.rearrange(target_labels, 'b p->(b p)', p=num_patches)
-            flatten_mask = einops.rearrange(mask, 'b p->(b p)', p=num_patches)
+            flatten_mask = einops.rearrange(mask2, 'b p->(b p)', p=num_patches)
             target_labels = target_labels[flatten_mask == 0]
-            target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1-mask_ratio)))
+            target_labels = einops.rearrange(target_labels, "(b p)-> b p", p=int(num_patches * (1-mask_ratio2)))
             target_labels = (target_labels != -1) * 1
             # cls_token = latent[:, -1]
-            pred_anomalies = torch.sigmoid(self.cls_anomalies(mask_latent[:, 1:, :]).squeeze())
+            pred_anomalies = torch.sigmoid(self.cls_anomalies(mask_latent2[:, 1:, :]).squeeze())
             cls_loss = self.cls_loss(pred_anomalies, target_labels.float())
             loss = loss + 0.5 * cls_loss
             if self.training:
-                return loss, pred_stud, mask
+                return loss, pred_stud, mask2
             else:
-                return loss, pred_teacher, mask, self.abnormal_score_TS(targets, pred_stud, pred_teacher, mask,
+                return loss, pred_teacher, mask2, self.abnormal_score_TS(targets, pred_stud, pred_teacher, mask2,
                                                                         grad_mask, pred_anomalies)
 
     def abnormal_score(self, imgs, pred, mask, gradients, pred_anomalies):

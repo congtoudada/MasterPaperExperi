@@ -26,13 +26,15 @@ def train_one_epoch(model: torch.nn.Module,
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
-    for data_iter_step, (samples, pre_img, grad_mask, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
-        targets = targets.to(device, non_blocking=True)
-        samples = samples.to(device, non_blocking=True)
+    for data_iter_step, (pre_pre_imgs, pre_imgs, imgs, grad_mask, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+        pre_pre_imgs = pre_pre_imgs.to(device, non_blocking=True)
+        pre_imgs = pre_imgs.to(device, non_blocking=True)
+        imgs = imgs.to(device, non_blocking=True)
         grad_mask = grad_mask.to(device, non_blocking=True)
-        pre_img = pre_img.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
 
-        loss, _, _ = model(samples, pre_img, grad_mask=grad_mask, targets=targets, mask_ratio=args.mask_ratio)
+        loss, _, _ = model(pre_pre_imgs, pre_imgs, imgs, grad_mask=grad_mask, targets=targets,
+                           mask_ratio1=args.mask_ratio1, mask_ratio2=args.mask_ratio2)
         loss_value = loss.item()
 
         if not math.isfinite(loss_value):
@@ -75,15 +77,17 @@ def test_one_epoch(model: torch.nn.Module, data_loader: Iterable,
     predictions = []
     labels = []
     videos = []
-    for data_iter_step, (samples, pre_img, grads, targets, label, vid, _) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+    for data_iter_step, (pre_pre_imgs, pre_imgs, imgs, grads, targets, label, vid, _) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
         videos += list(vid)
         labels += list(label.detach().cpu().numpy())
 
-        samples = samples.to(device)
-        pre_img = pre_img.to(device)
+        pre_pre_imgs = pre_pre_imgs.to(device)
+        pre_imgs = pre_imgs.to(device)
+        imgs = imgs.to(device)
         grads = grads.to(device)
         targets = targets.to(device)
-        _, _, _, recon_error = model(samples, pre_img, grad_mask=grads, targets=targets, mask_ratio=args.mask_ratio)
+        _, _, _, recon_error = model(pre_pre_imgs, pre_imgs, imgs, grad_mask=grads, targets=targets,
+                                     mask_ratio1=args.mask_ratio1, mask_ratio2=args.mask_ratio2)
         if isinstance(recon_error, list) or isinstance(recon_error, tuple):
             if len(recon_error) == 2:
                 recon_error = 1.05*recon_error[0] + 0.53*recon_error[1]
