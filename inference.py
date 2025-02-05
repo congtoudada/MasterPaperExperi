@@ -53,7 +53,8 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
         predictions_teacher = np.array(predictions_teacher)
         predictions_student_teacher = np.array(predictions_student_teacher)
         pred_anomalies = np.array(pred_anomalies)
-        predictions = 1.05 * predictions_teacher + 0.53 * predictions_student_teacher + 0.53 * pred_anomalies
+        # predictions = 1.05 * predictions_teacher + 0.53 * predictions_student_teacher + 0.53 * pred_anomalies
+        predictions = 10.5 * predictions_teacher + 5.3 * predictions_student_teacher + 5.3 * pred_anomalies
         micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
                                               normalize_scores=False,
                                               range=100, mu=11)
@@ -97,20 +98,20 @@ def evaluate_model(predictions, labels, videos,
         lbl = labels[np.array(videos) == vid]
         filtered_labels.append(lbl)
 
-        # # pred + label
-        # # Plot the anomaly score (pred) and the label (lbl) on the same graph
-        # pred_norm = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
-        # plt.plot(pred_norm, label='Anomaly Score', color='b')
-        # plt.plot(lbl, label='Ground Truth', color='r', linestyle='--')
-        # plt.xlabel("Frames")
-        # plt.ylabel("Anomaly Score")
-        # plt.legend()
-        # plt.title(f"Anomaly Detection: Video {vid}")
-        #
-        # # Save the plot for this video
-        # os.makedirs("graphs/avenue", exist_ok=True)
-        # plt.savefig(f"graphs/avenue/{vid}.png")
-        # plt.close()
+        # pred + label
+        # Plot the anomaly score (pred) and the label (lbl) on the same graph
+        pred_norm = (pred - np.min(pred)) / (np.max(pred) - np.min(pred))
+        plt.plot(pred_norm, label='Anomaly Score', color='b')
+        plt.plot(lbl, label='Ground Truth', color='r', linestyle='--')
+        plt.xlabel("Frames")
+        plt.ylabel("Anomaly Score")
+        plt.legend()
+        plt.title(f"Anomaly Detection: Video {vid}")
+
+        # Save the plot for this video
+        os.makedirs("graphs/avenue", exist_ok=True)
+        plt.savefig(f"graphs/avenue/{vid}.png")
+        plt.close()
 
         lbl = np.array([0] + list(lbl) + [1])
         pred = np.array([0] + list(pred) + [1])
