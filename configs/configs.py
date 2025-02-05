@@ -3,9 +3,9 @@ import ml_collections
 
 def get_configs_avenue():
     config = ml_collections.ConfigDict()
-    config.batch_size = 64
+    config.batch_size = 32
     config.epochs = 100
-    config.mask_ratio = 0.85
+    config.mask_ratio = 0.75
     config.start_TS_epoch = 50
     config.masking_method = "random_masking"
     config.output_dir = "experiments/avenue"  # the checkpoints will be loaded from here
@@ -15,7 +15,7 @@ def get_configs_avenue():
     config.input_size = (320, 640)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = 'inference'  # train & inference
+    config.run_type = 'train'  # train & inference
     config.resume = False
     # Optimizer parameters
     config.weight_decay = 0.05  # 0.05
@@ -28,7 +28,7 @@ def get_configs_avenue():
     config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
-    config.previous_nums = 8
+    config.previous_nums = 12
 
     config.start_epoch = 0
     config.print_freq = 10

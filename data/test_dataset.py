@@ -50,7 +50,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
             labels += list(lbls)
 
             video_name = os.path.basename(dir)
-            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.png")))
+            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.jpg")))
             gradients_path = sorted(gradients_path, key=lambda x: int(os.path.basename(x).split('.')[0]))
             gradients += gradients_path
         return data, labels, gradients
@@ -58,7 +58,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
     def __getitem__(self, index):
         current_img = cv2.imread(self.data[index])
         dir_path, frame_no, len_frame_no = self.extract_meta_info(self.data, index)
-        previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-1, length=len_frame_no)
+        previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-2, length=len_frame_no)
         # next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
         # img = current_img
         # if self.input_3d:
