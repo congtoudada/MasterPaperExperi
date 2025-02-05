@@ -4,7 +4,8 @@ from itertools import repeat
 import logging
 import os
 from collections import OrderedDict
-
+from torch import Tensor
+from typing import Optional
 import numpy as np
 import scipy
 import torch
@@ -133,7 +134,7 @@ class Attention(nn.Module):
         self.proj_k = nn.Linear(dim_in, dim_out, bias=qkv_bias)
         self.proj_v = nn.Linear(dim_in, dim_out, bias=qkv_bias)
 
-        self.attn1_drop = nn.Dropout(attn_drop)
+        self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim_out, dim_out)
         self.proj_drop = nn.Dropout(proj_drop)
 
@@ -175,13 +176,11 @@ class Attention(nn.Module):
 
         return proj
 
-    def forward_conv(self, x, kv, h, w):
+    def forward_conv(self, x, h, w):
         if self.with_cls_token:
             cls_token, x = torch.split(x, [1, h*w], 1)
-            cls_token_kv, kv = torch.split(kv, [1, h*w], 1)
 
         x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
-        kv = rearrange(kv, 'b (h w) c -> b c h w', h=h, w=w)
 
         if self.conv_proj_q is not None:
             q = self.conv_proj_q(x)
@@ -189,29 +188,29 @@ class Attention(nn.Module):
             q = rearrange(x, 'b c h w -> b (h w) c')
 
         if self.conv_proj_k is not None:
-            k = self.conv_proj_k(kv)
+            k = self.conv_proj_k(x)
         else:
-            k = rearrange(kv, 'b c h w -> b (h w) c')
+            k = rearrange(x, 'b c h w -> b (h w) c')
 
         if self.conv_proj_v is not None:
-            v = self.conv_proj_v(kv)
+            v = self.conv_proj_v(x)
         else:
-            v = rearrange(kv, 'b c h w -> b (h w) c')
+            v = rearrange(x, 'b c h w -> b (h w) c')
 
         if self.with_cls_token:
             q = torch.cat((cls_token, q), dim=1)
-            k = torch.cat((cls_token_kv, k), dim=1)
-            v = torch.cat((cls_token_kv, v), dim=1)
+            k = torch.cat((cls_token, k), dim=1)
+            v = torch.cat((cls_token, v), dim=1)
 
         return q, k, v
 
-    def forward(self, x, kv, h, w):
+    def forward(self, x, h, w):
         if (
             self.conv_proj_q is not None
             or self.conv_proj_k is not None
             or self.conv_proj_v is not None
         ):
-            q, k, v = self.forward_conv(x, kv, h, w)
+            q, k, v = self.forward_conv(x, h, w)
 
         q = rearrange(self.proj_q(q), 'b t (h d) -> b h t d', h=self.num_heads)
         k = rearrange(self.proj_k(k), 'b t (h d) -> b h t d', h=self.num_heads)
@@ -219,7 +218,7 @@ class Attention(nn.Module):
 
         attn_score = torch.einsum('bhlk,bhtk->bhlt', [q, k]) * self.scale
         attn = F.softmax(attn_score, dim=-1)
-        attn = self.attn1_drop(attn)
+        attn = self.attn_drop(attn)
 
         x = torch.einsum('bhlt,bhtv->bhlv', [attn, v])
         x = rearrange(x, 'b h t d -> b t (h d)')
@@ -317,11 +316,9 @@ class Block(nn.Module):
                  drop_path=0.,
                  act_layer=nn.GELU,
                  norm_layer=nn.LayerNorm,
-                 cross_attn=False,
                  **kwargs):
         super().__init__()
 
-        self.cross_attn = cross_attn
         self.norm1 = norm_layer(dim_in)
         self.attn = Attention(
             dim_in, dim_out, num_heads, qkv_bias, attn_drop, drop,
@@ -330,48 +327,27 @@ class Block(nn.Module):
 
         self.drop_path = DropPath(drop_path) \
             if drop_path > 0. else nn.Identity()
-        dim_mlp_hidden = int(dim_out * mlp_ratio)
-        self.mlp = PointwiseConvMlp(in_features=dim_out, hidden_features=dim_mlp_hidden)
         self.norm2 = norm_layer(dim_out)
+
+        dim_mlp_hidden = int(dim_out * mlp_ratio)
         # self.mlp = Mlp(
         #     in_features=dim_out,
         #     hidden_features=dim_mlp_hidden,
         #     act_layer=act_layer,
         #     drop=drop
         # )
-        if cross_attn:
-            self.attn2 = Attention(
-                dim_in, dim_out, num_heads, qkv_bias, attn_drop, drop,
-                **kwargs
-            )
-            self.norm3 = norm_layer(dim_in)
-            self.norm4 = norm_layer(dim_out)
-            self.mlp2 = PointwiseConvMlp(in_features=dim_in, hidden_features=dim_mlp_hidden)
+        self.mlp = PointwiseConvMlp(in_features=dim_out, hidden_features=dim_mlp_hidden)
 
-    def forward(self, x, kv, h, w):
+    def forward(self, x, h, w):
         res = x
-        x = self.norm1(x)
 
-        if not self.cross_attn:
-            # self-attn
-            self_attn = self.attn(x, x, h, w)
-            x = res + self.drop_path(self_attn)
-            # mlp
-            x = x + self.drop_path(self.mlp(self.norm2(x), h=h, w=w))
-        else:
-            # cross-attn
-            cross_attn = self.attn2(x, kv, h, w)
-            x = res + self.drop_path(cross_attn)
-            # mlp
-            x = x + self.drop_path(self.mlp(self.norm3(x), h=h, w=w))
-            x = x + self.norm4(x)
-            # self-attn
-            self_attn = self.attn(x, x, h, w)
-            x = res + self.drop_path(self_attn)
-            # mlp
-            x = x + self.drop_path(self.mlp(self.norm2(x), h=h, w=w))
+        x = self.norm1(x)
+        attn = self.attn(x, h, w)
+        x = res + self.drop_path(attn)
+        x = x + self.drop_path(self.mlp(self.norm2(x), h=h, w=w))
 
         return x
+
 
 
 class ConvEmbed(nn.Module):
@@ -661,3 +637,133 @@ class ConvolutionalVisionTransformer(nn.Module):
         x = self.head(x)
 
         return x
+
+
+class DecoderBlock(nn.Module):
+    r"""TransformerDecoderLayer is made up of self-attn, multi-head-attn and feedforward network.
+    This standard decoder layer is based on the paper "Attention Is All You Need".
+    Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez,
+    Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in
+    Neural Information Processing Systems, pages 6000-6010. Users may modify or implement
+    in a different way during application.
+
+    Args:
+        d_model: the number of expected features in the input (required).
+        nhead: the number of heads in the multiheadattention models (required).
+        dim_feedforward: the dimension of the feedforward network model (default=2048).
+        dropout: the dropout value (default=0.1).
+        activation: the activation function of the intermediate layer, can be a string
+            ("relu" or "gelu") or a unary callable. Default: relu
+        layer_norm_eps: the eps value in layer normalization components (default=1e-5).
+        batch_first: If ``True``, then the input and output tensors are provided
+            as (batch, seq, feature). Default: ``False`` (seq, batch, feature).
+        norm_first: if ``True``, layer norm is done prior to self attention, multihead
+            attention and feedforward operations, respectively. Otherwise it's done after.
+            Default: ``False`` (after).
+
+    Examples::
+        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8)
+        >>> memory = torch.rand(10, 32, 512)
+        >>> tgt = torch.rand(20, 32, 512)
+        >>> out = decoder_layer(tgt, memory)
+
+    Alternatively, when ``batch_first`` is ``True``:
+        >>> decoder_layer = nn.TransformerDecoderLayer(d_model=512, nhead=8, batch_first=True)
+        >>> memory = torch.rand(32, 10, 512)
+        >>> tgt = torch.rand(32, 20, 512)
+        >>> out = decoder_layer(tgt, memory)
+    """
+    __constants__ = ['batch_first', 'norm_first']
+
+    def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1, activation = nn.GELU,
+                 layer_norm_eps: float = 1e-6, batch_first: bool = True, norm_first: bool = False,
+                 device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+                                            **factory_kwargs)
+        self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+                                                 **factory_kwargs)
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+
+        self.norm_first = norm_first
+        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.dropout3 = nn.Dropout(dropout)
+
+        # Legacy string support for activation function.
+        self.activation = activation()
+
+
+    def forward(
+        self,
+        tgt: Tensor,        # f2
+        memory: Tensor,     # f1
+        tgt_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
+        tgt_key_padding_mask: Optional[Tensor] = None,
+        memory_key_padding_mask: Optional[Tensor] = None,
+        tgt_is_causal: bool = False,
+        memory_is_causal: bool = False,
+    ) -> Tensor:
+        r"""Pass the inputs (and mask) through the decoder layer.
+
+        Args:
+            tgt: the sequence to the decoder layer (required).
+            memory: the sequence from the last layer of the encoder (required).
+            tgt_mask: the mask for the tgt sequence (optional).
+            memory_mask: the mask for the memory sequence (optional).
+            tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
+            memory_key_padding_mask: the mask for the memory keys per batch (optional).
+            tgt_is_causal: If specified, applies a causal mask as tgt mask.
+                Mutually exclusive with providing tgt_mask. Default: ``False``.
+            memory_is_causal: If specified, applies a causal mask as tgt mask.
+                Mutually exclusive with providing memory_mask. Default: ``False``.
+        Shape:
+            see the docs in Transformer class.
+        """
+        # see Fig. 1 of https://arxiv.org/pdf/2002.04745v1.pdf
+
+        x = tgt
+        if self.norm_first:
+            x = x + self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask, memory_is_causal)
+            x = x + self._ff_block(self.norm3(x))
+            x = x + self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask, tgt_is_causal)
+        else:
+            x = self.norm2(x + self._mha_block(x, memory, memory_mask, memory_key_padding_mask, memory_is_causal))
+            x = self.norm3(x + self._ff_block(x))
+            x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal))
+
+        return x
+
+
+    # self-attention block
+    def _sa_block(self, x: Tensor,
+                  attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tensor:
+        x = self.self_attn(x, x, x,
+                           attn_mask=attn_mask,
+                           key_padding_mask=key_padding_mask,
+                           is_causal=is_causal,
+                           need_weights=False)[0]
+        return self.dropout1(x)
+
+    # multihead attention block
+    def _mha_block(self, x: Tensor, mem: Tensor,
+                   attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tensor:
+        x = self.multihead_attn(x, mem, mem,
+                                attn_mask=attn_mask,
+                                key_padding_mask=key_padding_mask,
+                                is_causal=is_causal,
+                                need_weights=False)[0]
+        return self.dropout2(x)
+
+    # feed forward block
+    def _ff_block(self, x: Tensor) -> Tensor:
+        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
+        return self.dropout3(x)

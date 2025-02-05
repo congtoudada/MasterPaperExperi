@@ -6,7 +6,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn import BCELoss
 
-from model.cvt import ConvEmbed, Block
+from model.cvt import ConvEmbed, Block, DecoderBlock
 from util.morphology import Erosion2d, Dilation2d
 
 
@@ -50,8 +50,8 @@ class MaskedAutoencoderCvT(nn.Module):
         )
 
         self.blocks = nn.ModuleList([
-            Block(embed_dim, embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None,
-                  norm_layer=norm_layer, cross_attn=False)
+            Block(embed_dim, embed_dim, num_heads, mlp_ratio,
+                  qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
         self.cls_anomalies = nn.Linear(embed_dim, 1)
@@ -64,15 +64,13 @@ class MaskedAutoencoderCvT(nn.Module):
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
 
         self.decoder_blocks = nn.ModuleList([
-            Block(decoder_embed_dim, decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, qk_scale=None,
-                  norm_layer=norm_layer, cross_attn=True)
+            DecoderBlock(decoder_embed_dim, decoder_num_heads)
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size ** 2 * out_chans, bias=True)  # decoder to patch
 
-        self.decoder_student_block = Block(decoder_embed_dim, decoder_embed_dim, decoder_num_heads, mlp_ratio,
-                                           qkv_bias=True, qk_scale=None, norm_layer=norm_layer, cross_attn=True)
+        self.decoder_student_block = DecoderBlock(decoder_embed_dim, decoder_num_heads)
         self.decoder_student_norm = norm_layer(decoder_embed_dim)
         self.decoder_student_pred = nn.Linear(decoder_embed_dim, patch_size ** 2 * out_chans,
                                               bias=True)  # decoder to patch
@@ -221,7 +219,7 @@ class MaskedAutoencoderCvT(nn.Module):
 
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x, x, self.masked_H, self.masked_W)
+            x = blk(x, self.masked_H, self.masked_W)
         x = self.norm(x)
 
         return x, mask, ids_restore
@@ -244,7 +242,7 @@ class MaskedAutoencoderCvT(nn.Module):
 
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x, x, self.H, self.W)
+            x = blk(x, self.H, self.W)
         x = self.norm(x)
 
         return x
@@ -261,13 +259,8 @@ class MaskedAutoencoderCvT(nn.Module):
         x = torch.cat([x_masked_latent[:, :1, :], x_], dim=1)  # append cls token
 
         # apply Transformer blocks
-        # # self - attention
-        # for blk in self.decoder_blocks:
-        #     x = blk(x, x_unmasked, self.H, self.W)
-        # x = self.decoder_norm(x)
-        # cross - attention
         for blk in self.decoder_blocks:
-            x = blk(x, x_unmasked, self.H, self.W)
+            x = blk(x, x_unmasked)
         x = self.decoder_norm(x)
 
         # predictor projection
@@ -291,14 +284,14 @@ class MaskedAutoencoderCvT(nn.Module):
 
         # apply Student Transformer blocks
         for idx in range(0, self.student_depth):
-            x = self.decoder_blocks[idx](x, x_unmasked, self.H, self.W)
-        x_student = self.decoder_student_block(x, x_unmasked, self.H, self.W)
+            x = self.decoder_blocks[idx](x, x_unmasked)
+        x_student = self.decoder_student_block(x, x_unmasked)
         x_student = self.decoder_student_norm(x_student)
         x_student = self.decoder_student_pred(x_student)
         x_student = x_student[:, 1:, :]
 
         for idx in range(self.student_depth, len(self.decoder_blocks)):
-            x = self.decoder_blocks[idx](x, x_unmasked, self.H, self.W)
+            x = self.decoder_blocks[idx](x, x_unmasked)
 
         # predictor projection
         x = self.decoder_norm(x)
