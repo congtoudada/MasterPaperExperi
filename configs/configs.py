@@ -44,7 +44,7 @@ def get_configs_shanghai():
     config.mask_ratio = 0.5
     config.start_TS_epoch = 30
     config.masking_method = "random_masking"
-    config.output_dir = "github_ckpt/shanghai" # the checkpoints will be loaded from here
+    config.output_dir = "experiments/shanghai"  # the checkpoints will be loaded from here
     config.abnormal_score_func = 'L1'
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
