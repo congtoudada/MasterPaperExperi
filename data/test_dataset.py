@@ -49,7 +49,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
             labels += list(lbls)
 
             video_name = os.path.basename(dir)
-            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.png")))
+            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.jpg")))
             gradients_path = sorted(gradients_path, key=lambda x: int(os.path.basename(x).split('.')[0]))
             gradients += gradients_path
         return data, labels, gradients
