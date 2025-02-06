@@ -1,5 +1,7 @@
 import glob
 import os
+import platform
+
 import cv2
 import numpy as np
 import torch.utils.data
@@ -36,6 +38,10 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
         dirs = list(glob.glob(os.path.join(data_path, "test", "frames", "*")))
         for dir in dirs:
             imgs_path = list(glob.glob(os.path.join(dir, f"*{extension}")))
+            # Windows适配
+            if platform.system() == "Windows":
+                for i in range(len(imgs_path)):
+                    imgs_path[i] = imgs_path[i].replace("\\", "/")
             imgs_path = sorted(imgs_path, key=lambda x: int(os.path.basename(x).split('.')[0]))
             lbls = np.loadtxt(os.path.join(gt_path, f"{os.path.basename(dir)}.txt"))
 
@@ -43,7 +49,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
             labels += list(lbls)
 
             video_name = os.path.basename(dir)
-            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.png")))
+            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.jpg")))
             gradients_path = sorted(gradients_path, key=lambda x: int(os.path.basename(x).split('.')[0]))
             gradients += gradients_path
         return data, labels, gradients
