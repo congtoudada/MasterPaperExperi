@@ -41,9 +41,8 @@ def compute_gradients(data_root_folder, step, folder):
                                                         os.path.basename(img_path)))
 
 
-if __name__ == "__main__":
-    root_folder_avenue = "/home/alin/datasets/Avenue_Dataset/Avenue Dataset"
-    root_folder_shanghai = "H:/AI/dataset/VAD/Featurize/ShanghaiTech"
-    # compute_gradients(root_folder_avenue, 1, "train")
-    # compute_gradients(root_folder_avenue, 1, "test")
-    compute_gradients(root_folder_shanghai, 1, "test")
+if __name__=="__main__":
+    root_folder_avenue = "dataset/VAD/Avenue/Avenue_Dataset/Avenue Dataset"
+    root_folder_shanghai = "dataset/VAD/ShanghaiTech/"
+    compute_gradients(root_folder_avenue, 1, "train")
+    compute_gradients(root_folder_avenue, 1, "test")

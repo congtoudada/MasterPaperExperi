@@ -38,7 +38,6 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
         dirs = list(glob.glob(os.path.join(data_path, "test", "frames", "*")))
         for dir in dirs:
             imgs_path = list(glob.glob(os.path.join(dir, f"*{extension}")))
-            # Windows适配
             if platform.system() == "Windows":
                 for i in range(len(imgs_path)):
                     imgs_path[i] = imgs_path[i].replace("\\", "/")
@@ -49,7 +48,7 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
             labels += list(lbls)
 
             video_name = os.path.basename(dir)
-            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.jpg")))
+            gradients_path = list(glob.glob(os.path.join(data_path, "test", "gradients2", video_name, "*.png")))
             gradients_path = sorted(gradients_path, key=lambda x: int(os.path.basename(x).split('.')[0]))
             gradients += gradients_path
         return data, labels, gradients
@@ -79,7 +78,6 @@ class AbnormalDatasetGradientsTest(torch.utils.data.Dataset):
         target = np.swapaxes(target, 0, -1).swapaxes(1, -1)
         gradient = np.swapaxes(gradient, 0, 1).swapaxes(0, -1)
         return img, gradient, target, self.labels[index], self.data[index].split('/')[-2], self.data[index]
-
 
     def extract_meta_info(self, data, index):
         frame_no = int(data[index].split("/")[-1].split('.')[0])

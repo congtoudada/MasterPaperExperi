@@ -3,19 +3,19 @@ import ml_collections
 
 def get_configs_avenue():
     config = ml_collections.ConfigDict()
-    config.batch_size = 32
+    config.batch_size = 32  # 100
     config.epochs = 200
     config.mask_ratio = 0.5
     config.start_TS_epoch = 100
     config.masking_method = "random_masking"
     config.output_dir = "experiments/avenue"  # the checkpoints will be loaded from here
-    config.abnormal_score_func = 'L2'
+    config.abnormal_score_func = ['L2', 'L2']
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
     config.input_size = (320, 640)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = 'inference'
+    config.run_type = 'inference'  # train & inference
     config.resume = False
     # Optimizer parameters
     config.weight_decay = 0.05
@@ -23,15 +23,15 @@ def get_configs_avenue():
 
     # Dataset parameters
     config.dataset = "avenue"
-    config.avenue_path = "H:/AI/dataset/VAD/Featurize/avenue"
-    config.avenue_gt_path = "H:/AI/dataset/VAD/Featurize/avenue/avenue_gt"
+    config.avenue_path = "H:/AI/dataset/VAD/Featurize/Avenue"
+    config.avenue_gt_path = "H:/AI/dataset/VAD/Featurize/Avenue/Avenue_gt"
     config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
 
     config.start_epoch = 0
     config.print_freq = 10
-    config.num_workers = 0
+    config.num_workers = 10
     config.pin_mem = False
 
     return config
@@ -39,20 +39,20 @@ def get_configs_avenue():
 
 def get_configs_shanghai():
     config = ml_collections.ConfigDict()
-    config.batch_size = 32
-    config.epochs = 60
+    config.batch_size = 100
+    config.epochs = 140
     config.mask_ratio = 0.5
-    config.start_TS_epoch = 30
+    config.start_TS_epoch = 100
     config.masking_method = "random_masking"
     config.output_dir = "experiments/shanghai"  # the checkpoints will be loaded from here
-    config.abnormal_score_func = 'L1'
+    config.abnormal_score_func = ['L1', 'L1']
     config.grad_weighted_rec_loss = True
     config.model = "mae_cvt"
     config.input_size = (160, 320)
     config.norm_pix_loss = False
     config.use_only_masked_tokens_ab = False
-    config.run_type = "train"
-    config.resume = True
+    config.run_type = "inference"
+    config.resume=False
 
     # Optimizer parameters
     config.weight_decay = 0.05
@@ -60,15 +60,15 @@ def get_configs_shanghai():
 
     # Dataset parameters
     config.dataset = "shanghai"
-    config.shanghai_path = "H:/AI/dataset/VAD/Featurize/shanghaitech"
-    config.shanghai_gt_path = "H:/AI/dataset/VAD/Featurize/shanghaitech/shanghai_gt"
-    config.percent_abnormal = 0.5
+    config.shanghai_path = "H:/AI/dataset/VAD/Featurize/ShanghaiTech"
+    config.shanghai_gt_path = "H:/AI/dataset/VAD/Featurize/ShanghaiTech/Shanghai_gt"
+    config.percent_abnormal = 0.25
     config.input_3d = True
     config.device = "cuda"
 
     config.start_epoch = 0
     config.print_freq = 10
-    config.num_workers = 10
+    config.num_workers = 0
     config.pin_mem = False
 
     return config
