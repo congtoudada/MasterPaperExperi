@@ -1,6 +1,5 @@
 import glob
 import os
-import platform
 import random
 import time
 
@@ -38,32 +37,22 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
         dirs = list(glob.glob(os.path.join(data_path, "train", "frames", "*")))
         for dir in dirs:
             imgs_path = list(glob.glob(os.path.join(dir, f"*{extension}")))
-            if platform.system() == "Windows":
-                for i in range(len(imgs_path)):
-                    imgs_path[i] = imgs_path[i].replace("\\", "/")
             data += imgs_path
             video_name = os.path.basename(dir)
             gradients_path = []
             for img_path in imgs_path:
                 gradients_path.append(os.path.join(data_path, "train", "gradients2", video_name,
-                                                   f"{int(os.path.basename(img_path).split('.')[0])}.png")
-                                      .replace("\\", "/"))
+                                              f"{int(os.path.basename(img_path).split('.')[0])}.png"))
                 abnormal_data.append(os.path.join(data_path, "train", "frames_abnormal", video_name,
-                                                  f"{int(os.path.basename(img_path).split('.')[0])}.png")
-                                     .replace("\\", "/"))
+                                                  f"{int(os.path.basename(img_path).split('.')[0])}.png"))
                 masks_abnormal.append(os.path.join(data_path, "train", "masks_abnormal", video_name,
-                                                   f"{int(os.path.basename(img_path).split('.')[0])}.png")
-                                      .replace("\\", "/"))
+                                                  f"{int(os.path.basename(img_path).split('.')[0])}.png"))
             gradients += gradients_path
-        # abnormal_data: 叠加异常帧的原始训练图像
-        # data: 原始训练图像
-        # gradients：运动梯度
-        # masks_abnormal：合成异常mask(0无异常,1表示异常)
         return abnormal_data, data, gradients, masks_abnormal
 
     def __getitem__(self, index):
         random_uniform = random.uniform(0, 1)
-        if random_uniform <= self.percent_abnormal:  # 叠加异常
+        if random_uniform <= self.percent_abnormal:
             img = cv2.imread(self.abnormal_data[index])
             # img = cv2.resize(img, self.args.usual_size[::-1])
             dir_path, frame_no, len_frame_no = self.extract_meta_info(self.abnormal_data, index)
@@ -73,17 +62,17 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
             # next_img = cv2.resize(next_img, self.args.usual_size[::-1])
             if self.input_3d:
                 img = np.concatenate([previous_img, img, next_img], axis=-1)
-            mask = cv2.imread(self.masks_abnormal[index])[:, :, :1]
+            mask = cv2.imread(self.masks_abnormal[index])[:,:,:1]
             # mask = cv2.resize(mask, self.args.usual_size[::-1])
             # mask = np.expand_dims(mask, axis=-1)
-        else:  # 不叠加异常
+        else:
             img = cv2.imread(self.data[index])
             dir_path, frame_no, len_frame_no = self.extract_meta_info(self.data, index)
             previous_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=-3, length=len_frame_no)
             next_img = self.read_prev_next_frame_if_exists(dir_path, frame_no, direction=3, length=len_frame_no)
             if self.input_3d:
                 img = np.concatenate([previous_img, img, next_img], axis=-1)
-            mask = np.zeros((img.shape[0], img.shape[1], 1), dtype=np.uint8)
+            mask = np.zeros((img.shape[0],img.shape[1],1),dtype=np.uint8)
         gradient = cv2.imread(self.gradients[index])
         target = cv2.imread(self.data[index])
 
@@ -95,7 +84,7 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
         if target.shape[:2] != self.args.input_size:
             target = cv2.resize(target, self.args.input_size[::-1])
 
-        target = np.concatenate((target, mask), axis=-1)  # 将mask叠加到第4个通道
+        target = np.concatenate((target, mask), axis=-1)
         img = img.astype(np.float32)
         gradient = gradient.astype(np.float32)
         target = target.astype(np.float32)

@@ -18,14 +18,13 @@ from model.model_factory import mae_cvt_patch16, mae_cvt_patch8
 from util import misc
 import torch
 
-
 def main(args):
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(', ', ',\n'))
     log_writer = SummaryWriter(log_dir=args.output_dir)
 
     device = args.device
-    if args.run_type == 'train':
+    if args.run_type =='train':
         dataset_train = AbnormalDatasetGradientsTrain(args)
         print(dataset_train)
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
@@ -47,16 +46,16 @@ def main(args):
     # define the model
     if args.dataset == 'avenue':
         model = mae_cvt_patch16(norm_pix_loss=args.norm_pix_loss, img_size=args.input_size,
-                                use_only_masked_tokens_ab=args.use_only_masked_tokens_ab,
-                                abnormal_score_func=args.abnormal_score_func,
-                                masking_method=args.masking_method,
-                                grad_weighted_loss=args.grad_weighted_rec_loss).float()
+                                                use_only_masked_tokens_ab=args.use_only_masked_tokens_ab,
+                                                abnormal_score_func=args.abnormal_score_func,
+                                                masking_method=args.masking_method,
+                                                grad_weighted_loss=args.grad_weighted_rec_loss).float()
     else:
         model = mae_cvt_patch8(norm_pix_loss=args.norm_pix_loss, img_size=args.input_size,
-                               use_only_masked_tokens_ab=args.use_only_masked_tokens_ab,
-                               abnormal_score_func=args.abnormal_score_func,
-                               masking_method=args.masking_method,
-                               grad_weighted_loss=args.grad_weighted_rec_loss).float()
+                                                use_only_masked_tokens_ab=args.use_only_masked_tokens_ab,
+                                                abnormal_score_func=args.abnormal_score_func,
+                                                masking_method=args.masking_method,
+                                                grad_weighted_loss=args.grad_weighted_rec_loss).float()
     model.to(device)
     if args.run_type == "train":
         do_training(args, data_loader_test, data_loader_train, device, log_writer, model)
@@ -71,11 +70,11 @@ def main(args):
             inference(model, data_loader_test, device, args=args)
 
 
+
 def do_training(args, data_loader_test, data_loader_train, device, log_writer, model):
     print("actual lr: %.2e" % args.lr)
     # following timm: set wd as 0 for bias and norm layers
-    # param_groups = optim_factory.param_groups_weight_decay(model, args.weight_decay)  # Deprecated
-    param_groups = optim_factory.add_weight_decay(model, args.weight_decay)
+    param_groups = optim_factory.param_groups_weight_decay(model, args.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
     loss_scaler = NativeScaler()
@@ -126,12 +125,12 @@ def do_training(args, data_loader_test, data_loader_train, device, log_writer, m
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='shanghai')
+    parser.add_argument('--dataset', type=str, default='avenue')
     args = parser.parse_args()
     if args.dataset == 'avenue':
         args = get_configs_avenue()
     else:
-        args = get_configs_shanghai()  #
+        args = get_configs_shanghai()#
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     main(args)

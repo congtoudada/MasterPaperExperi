@@ -364,6 +364,7 @@ class MaskedAutoencoderCvT(nn.Module):
             output.append(torch.abs(imgs - pred_teacher).mean((2)))
             return [output[0].mean(1), output[1].mean(1)]
         elif self.abnormal_score_func_TS == "L2":
+
             output.append((((pred_teacher - pred_stud) ** 2).mean(2)))
             output.append((((imgs - pred_teacher) ** 2).mean(2)))
             return [output[0].mean(1), output[1].mean(1)]

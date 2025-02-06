@@ -2,7 +2,6 @@ from collections.abc import Iterable
 
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from sklearn import metrics
 
 from util import misc
@@ -21,7 +20,6 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
 
     predictions_teacher = []
     predictions_student_teacher = []
-    pred_anomalies = []
     labels = []
     videos = []
     frames = []
@@ -32,7 +30,11 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
         samples = samples.to(device)
         grads = grads.to(device)
         targets = targets.to(device)
-        model.train_TS = True  # student-teacher reconstruction error
+        model.train_TS = True # student-teacher reconstruction error
+        if args.dataset == 'avenue':
+            model.abnormal_score_func_TS = "L2"
+        else:
+            model.abnormal_score_func_TS = 'L1'
         _, _, _, recon_error_st_tc = model(samples, targets=targets, grad_mask=grads, mask_ratio=args.mask_ratio)
         recon_error_st_tc[0] = recon_error_st_tc[0].detach().cpu().numpy()
         recon_error_st_tc[1] = recon_error_st_tc[1].detach().cpu().numpy()
@@ -42,18 +44,19 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
     # Compute statistics
     predictions_teacher = np.array(predictions_teacher)
     predictions_student_teacher = np.array(predictions_student_teacher)
-    predictions = predictions_teacher + predictions_student_teacher
+    predictions = predictions_teacher+predictions_student_teacher
     labels = np.array(labels)
     videos = np.array(videos)
 
     if args.dataset =='avenue':
         evaluate_model(predictions, labels, videos,
-                       normalize_scores=False,
-                       range=38, mu=11)
+                                           normalize_scores=False,
+                                           range=38, mu=11)
     else:
         evaluate_model(predictions_teacher, labels, videos,
                        normalize_scores=True,
                        range=900, mu=282)
+
 
 def evaluate_model(predictions, labels, videos,
                    range=302, mu=21, normalize_scores=False):
@@ -69,35 +72,12 @@ def evaluate_model(predictions, labels, videos,
 
         pred = np.nan_to_num(pred, nan=0.)
 
-        # pred
-        # plt.plot(pred)
-        # plt.xlabel("Frames")
-        # plt.ylabel("Anomaly Score")
-        # plt.savefig(f"graphs/{vid}.png")
-        # plt.close()
-
         filtered_preds.append(pred)
         lbl = labels[np.array(videos) == vid]
         filtered_labels.append(lbl)
-
-        # pred + label
-        # # Plot the anomaly score (pred) and the label (lbl) on the same graph
-        # plt.plot(pred, label='Anomaly Score', color='b')
-        # plt.plot(lbl, label='Ground Truth', color='r', linestyle='--')
-        # plt.xlabel("Frames")
-        # plt.ylabel("Anomaly Score")
-        # plt.legend()
-        # plt.title(f"Anomaly Detection: Video {vid}")
-        #
-        # # Save the plot for this video
-        # plt.savefig(f"graphs/{vid}.png")
-        # plt.close()
-
         lbl = np.array([0] + list(lbl) + [1])
         pred = np.array([0] + list(pred) + [1])
-
-        fpr, tpr, thresholds = metrics.roc_curve(lbl, pred)
-
+        fpr, tpr, _ = metrics.roc_curve(lbl, pred)
         res = metrics.auc(fpr, tpr)
         aucs.append(res)
 
@@ -111,7 +91,6 @@ def evaluate_model(predictions, labels, videos,
     micro_auc = metrics.auc(fpr, tpr)
     micro_auc = np.nan_to_num(micro_auc, nan=1.0)
 
-    print(f"MicroAUC: {micro_auc}, MacroAUC: {macro_auc}, range:{range}, mu:{mu}, normalize scores:{normalize_scores}")
     # gather the stats from all processes
+    print(f"MicroAUC: {micro_auc}, MacroAUC: {macro_auc}, range:{range}, mu:{mu}, normalize scores:{normalize_scores}")
     return micro_auc, macro_auc
-
