@@ -54,11 +54,10 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
         predictions_student_teacher = np.array(predictions_student_teacher)
         pred_anomalies = np.array(pred_anomalies)
         # predictions = 1.05 * predictions_teacher + 0.53 * predictions_student_teacher + 0.53 * pred_anomalies
-        predictions = 2.2 * predictions_teacher + 1.1 * predictions_student_teacher + pred_anomalies
-        # predictions = 10.5 * predictions_teacher + 5.3 * predictions_student_teacher + 5.3 * pred_anomalies
+        predictions = 10.5 * predictions_teacher + 5.3 * predictions_student_teacher + 5.3 * pred_anomalies
         micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
                                               normalize_scores=False,
-                                              range=102, mu=12)
+                                              range=100, mu=11)
     else:
         predictions_teacher = np.array(predictions_teacher)
         predictions_student_teacher = np.array(predictions_student_teacher)
