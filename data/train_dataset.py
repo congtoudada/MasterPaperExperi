@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import torch.utils.data
 
-IMG_EXTENSIONS = [".jpg", ".jpg", ".jpeg", ".tif"]
+IMG_EXTENSIONS = [".png", ".jpg", ".jpeg", ".tif"]
 
 
 class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
@@ -47,13 +47,13 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
             gradients_path = []
             for img_path in imgs_path:
                 gradients_path.append(os.path.join(data_path, "train", "gradients2", video_name,
-                                                   f"{int(os.path.basename(img_path).split('.')[0])}.jpg").replace("\\",
+                                                   f"{int(os.path.basename(img_path).split('.')[0])}.png").replace("\\",
                                                                                                                    "/"))
                 abnormal_data.append(os.path.join(data_path, "train", "frames_abnormal", video_name,
-                                                  f"{int(os.path.basename(img_path).split('.')[0])}.jpg").replace("\\",
+                                                  f"{int(os.path.basename(img_path).split('.')[0])}.png").replace("\\",
                                                                                                                   "/"))
                 masks_abnormal.append(os.path.join(data_path, "train", "masks_abnormal", video_name,
-                                                   f"{int(os.path.basename(img_path).split('.')[0])}.jpg").replace("\\",
+                                                   f"{int(os.path.basename(img_path).split('.')[0])}.png").replace("\\",
                                                                                                                    "/"))
             gradients += gradients_path
         return abnormal_data, data, gradients, masks_abnormal
@@ -110,11 +110,11 @@ class AbnormalDatasetGradientsTrain(torch.utils.data.Dataset):
         return dir_path, frame_no, len_frame_no
 
     def read_prev_next_frame_if_exists(self, dir_path, frame_no, direction=-3, length=1):
-        frame_path = dir_path + "/" + str(frame_no + direction).zfill(length) + ".jpg"
+        frame_path = dir_path + "/" + str(frame_no + direction).zfill(length) + ".png"
         if os.path.exists(frame_path):
             return cv2.imread(frame_path)
         else:
-            return cv2.imread(dir_path + "/" + str(frame_no).zfill(length) + ".jpg")
+            return cv2.imread(dir_path + "/" + str(frame_no).zfill(length) + ".png")
 
     def __len__(self):
         return len(self.data)
