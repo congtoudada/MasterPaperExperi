@@ -39,7 +39,7 @@ def get_configs_avenue():
 
 def get_configs_shanghai():
     config = ml_collections.ConfigDict()
-    config.batch_size = 32
+    config.batch_size = 100
     config.epochs = 60
     config.mask_ratio = 0.5
     config.start_TS_epoch = 30

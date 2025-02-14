@@ -66,7 +66,7 @@ def inference(model: torch.nn.Module, data_loader: Iterable,
         predictions = pred_anomalies + predictions_teacher + predictions_student_teacher
         micro_auc, macro_auc = evaluate_model(predictions, labels, videos,
                                               normalize_scores=True,
-                                              range=120, mu=16)
+                                              range=200, mu=20)
     print(f"MicroAUC: {micro_auc}, MacroAUC: {macro_auc}")
 
     # np.save("st_tc_list.npy", predictions_student_teacher)
